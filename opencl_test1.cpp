@@ -13,7 +13,7 @@
 
 using namespace cimg_library;
 
-const size_t MEM_SIZE = 1000000;
+const size_t MEM_SIZE = 10000000;
 //const size_t MAX_SOURCE_SIZE = 0x100000;
 const char VITERBI_KERNEL_FILE[] = "viterbi_kernel.cl";
 const char VITERBI_INIT_FILE[] = "init_V_kernel.cl";
@@ -129,7 +129,6 @@ int vectorAdd()
 
 	/* Create OpenCL Kernel */
 	
-	clock_t start = clock();
 	cl_kernel kernel = clCreateKernel(program, "addVectors", &err);
 	cl_kernel kernel_initV = clCreateKernel(program, VITERBI_INIT_V_FUNCTION, &err);
 	//allocating memory on device
@@ -169,7 +168,7 @@ int vectorAdd()
 	err = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&cmVector2);
 	err = clSetKernelArg(kernel, 2, sizeof(cl_mem), (void*)&cmResult);
 	err = clSetKernelArg(kernel, 3, sizeof(cl_int), (void*)&MEM_SIZE);
-
+	clock_t start = clock();
 	/* Execute OpenCL Kernel */
 	err = clEnqueueNDRangeKernel(command_queue, kernel, 1, NULL, &global_size, NULL, 0, NULL, NULL);
 	if (err != CL_SUCCESS)
