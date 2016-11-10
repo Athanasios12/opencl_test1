@@ -11,7 +11,7 @@ __kernel void addVectors(__global float * pVector1, __global float * pVector2, _
 __kernel void initV(__global float *V, int img_height, int img_width, int start_column)
 {
 	int row = get_global_id(0);
-	if (row >= img_height)
+	if (row >= img_height )
 	{
 		return;
 	}

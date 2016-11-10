@@ -13,7 +13,7 @@
 
 using namespace cimg_library;
 
-const size_t MEM_SIZE = 1000000;
+const size_t MEM_SIZE = 10000101;
 //const size_t MAX_SOURCE_SIZE = 0x100000;
 const char VITERBI_KERNEL_FILE[] = "viterbi_kernel.cl";
 const char VITERBI_INIT_FILE[] = "init_V_kernel.cl";
@@ -48,6 +48,16 @@ void rgb2Gray(const CImg<unsigned char> &img, CImg<unsigned char> &grayImg)
 		//int gray_value = (int)(0.299 * R + 0.587 * G + 0.114 * B);
 		int gray_value = (int)((R + G + B) / 3);
 		grayImg(x, y, 0, 0) = gray_value;
+	}
+}
+
+void fixGlobalSize(size_t &global_size, const size_t &local_size)
+{
+	if (global_size % local_size != 0)
+	{
+		int multiple = global_size / local_size;
+		++multiple;
+		global_size = multiple * local_size;
 	}
 }
 
@@ -129,7 +139,7 @@ int vectorAdd()
 
 	/* Create OpenCL Kernel */
 	
-	clock_t start = clock();
+	
 	cl_kernel kernel = clCreateKernel(program, "addVectors", &err);
 	cl_kernel kernel_initV = clCreateKernel(program, VITERBI_INIT_V_FUNCTION, &err);
 	//allocating memory on device
@@ -143,24 +153,16 @@ int vectorAdd()
 	}
 	float *result = (float*)malloc(sizeof(float) * MEM_SIZE);
 
-	//cl_mem mem_buff = clCreateBuffer(context, CL_MEM_READ_WRITE, MEM_SIZE * sizeof(float), NULL, &err);
-	cl_mem cmVector1 = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * MEM_SIZE, NULL, &err);
-	cl_mem cmVector2 = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * MEM_SIZE, NULL, &err);
-	cl_mem cmResult = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * MEM_SIZE, NULL, &err);
-
 	size_t global_size = MEM_SIZE;
-	size_t local_size = global_size;
 	size_t work_size = 0, info = 0, padding = 0;
 	clGetKernelWorkGroupInfo(kernel, device_id, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &work_size, &info);
-	if (global_size >= work_size)
-	{
-		local_size = work_size;
-		if (global_size % work_size != 0)
-		{
-			padding = global_size % work_size;
-		}
-	}
-	global_size = global_size + padding;
+	//clGetDeviceInfo(device_id, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &work_size, &info);
+	fixGlobalSize(global_size, work_size);
+	
+	//cl_mem mem_buff = clCreateBuffer(context, CL_MEM_READ_WRITE, MEM_SIZE * sizeof(float), NULL, &err);
+	cl_mem cmVector1 = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * global_size, NULL, &err);
+	cl_mem cmVector2 = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * global_size, NULL, &err);
+	cl_mem cmResult = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * global_size, NULL, &err);
 	err = clEnqueueWriteBuffer(command_queue, cmVector1, CL_FALSE, 0, sizeof(float) * MEM_SIZE, vector1, 0, NULL, NULL);
 	err = clEnqueueWriteBuffer(command_queue, cmVector2, CL_FALSE, 0, sizeof(float) * MEM_SIZE, vector2, 0, NULL, NULL);
 
@@ -169,9 +171,9 @@ int vectorAdd()
 	err = clSetKernelArg(kernel, 1, sizeof(cl_mem), (void*)&cmVector2);
 	err = clSetKernelArg(kernel, 2, sizeof(cl_mem), (void*)&cmResult);
 	err = clSetKernelArg(kernel, 3, sizeof(cl_int), (void*)&MEM_SIZE);
-
+	clock_t start = clock();
 	/* Execute OpenCL Kernel */
-	err = clEnqueueNDRangeKernel(command_queue, kernel, 1, NULL, &global_size, NULL, 0, NULL, NULL);
+	err = clEnqueueNDRangeKernel(command_queue, kernel, 1, NULL, &global_size, &work_size, 0, NULL, NULL);
 	if (err != CL_SUCCESS)
 	{
 		printf("\nerror!!\n");
@@ -199,27 +201,17 @@ int vectorAdd()
 	//viterbiLineDetect(gray_img, img, -2, 2);
 	unsigned char *img_out = new unsigned char[Img.width() * Img.height()];
 	memcpy(img_out, gray_img.data(0, 0, 0, 0), Img.width() * Img.height());
-	size_t Img_size = Img.width() * Img.height();
-	size_t img_height = Img.height();
-	size_t img_width = Img.width();
-	/*size_t global_size = img_height;
-	size_t local_size = global_size;
-	size_t work_size = 0, info = 0, padding = 0;
-	clGetKernelWorkGroupInfo(kernel_initV, device_id, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &work_size, &info);
-	if (global_size >= work_size)
-	{
-		local_size = work_size;
-		if (global_size % work_size != 0)
-		{
-			padding = global_size % work_size;
-		}
-	}
-	size_t VL_size = Img_size;
-	global_size = global_size + padding;*/
+	size_t Img_size = Img.width() * (Img.height() + 1) * 100;
+	size_t img_height = (Img.height()+ 1) * 10;
+	size_t img_width = Img.width() * 10 ;
+
 	float *V1 = (float*)malloc(Img_size * sizeof(float));
 	
 	int i = 0;
-
+	global_size = img_height;
+	//clGetDeviceInfo(device_id, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &work_size, &info);
+	clGetKernelWorkGroupInfo(kernel_initV, device_id, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &work_size, &info);
+	fixGlobalSize(global_size, work_size);
 	//clock_t start = clock();
 
 	cl_mem cmV1 = clCreateBuffer(context, CL_MEM_READ_WRITE, Img_size * sizeof(float), NULL, &err);
@@ -228,25 +220,25 @@ int vectorAdd()
 	err = clSetKernelArg(kernel_initV, 1, sizeof(cl_int), (void*)&img_height);
 	err = clSetKernelArg(kernel_initV, 2, sizeof(cl_int), (void*)&img_width);
 	err = clSetKernelArg(kernel_initV, 3, sizeof(cl_int), (void*)&i);
-
-
-	err = clEnqueueNDRangeKernel(command_queue, kernel_initV, 1, NULL, &img_height, NULL, 0, NULL, NULL);
+	
+	start = clock();
+	err = clEnqueueNDRangeKernel(command_queue, kernel_initV, 1, NULL, &global_size, &work_size, 0, NULL, NULL);
 
 	err = clEnqueueReadBuffer(command_queue, cmV1, CL_TRUE, 0,
 		Img_size * sizeof(float), V1, 0, NULL, NULL);
-	err = clFinish(command_queue);
-	/*clock_t end = clock();
-	float time = (float)(end - start);*/
-	//display result
-	
-	free(V1);
-	/*printf("\nresult v :\n");
-	for (int i = 0; i < Img_size; i++)
+	end = clock();
+	time = (float)(end - start);
+	printf("\nVector zero insert parallel execution time : %f s\n", time);
+	start = clock();
+	for (int row = 0; row < img_height; row++)
 	{
-		printf("\n%f", V1[i]);
-		V1[i] = 10;
-	}*/
-	//err = clFlush(command_queue);
+		V1[(row * img_width) + i] = 0;
+	}
+	end = clock();
+	time = (float)(end - start);
+	printf("\nVector zero insert serial execution time : %f s\n", time);
+
+
 	
 	err = clReleaseKernel(kernel);
 	err = clReleaseProgram(program);
@@ -254,10 +246,12 @@ int vectorAdd()
 	err = clReleaseMemObject(cmVector2);
 	err = clReleaseMemObject(cmResult);
 	err = clReleaseMemObject(cmV1);
-//	err = clReleaseMemObject(cmV);
 	err = clReleaseCommandQueue(command_queue);
 	err = clReleaseContext(context);
-
+	free(V1);
+	free(vector1);
+	free(vector2);
+	free(result);
 	free(source_str);
 	getchar();
 	return 0;
@@ -312,16 +306,16 @@ int viterbiLineOpenCL(	const unsigned char *img,
 	size_t global_size = img_height;
 	size_t local_size = global_size;
 	//get max local work_group size programaticly later
-	size_t *work_info = (size_t*)malloc(sizeof(size_t));
+	size_t work_info = 0;
 	size_t ret_info = 0;
-	clGetKernelWorkGroupInfo(init_V, device_id, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), work_info, &ret_info);
-	printf("Work group info %d, %d", *work_info, ret_info);
-	if (global_size >= *work_info)
+	clGetKernelWorkGroupInfo(init_V, device_id, CL_KERNEL_PREFERRED_WORK_GROUP_SIZE_MULTIPLE, sizeof(size_t), &work_info, &ret_info);
+	printf("Work group info %d, %d", work_info, ret_info);
+	if (global_size >= work_info)
 	{
-		local_size = *work_info;
-		if (global_size % *work_info != 0)
+		local_size = work_info;
+		if (global_size % work_info != 0)
 		{
-			padding = global_size % *work_info;
+			padding = global_size % work_info;
 		}
 	}
 	size_t VL_size = img_size;
