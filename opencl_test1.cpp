@@ -466,7 +466,7 @@ int viterbiLineDetect3(const pix_type *img, unsigned int img_height, unsigned in
 		return 0;
 	}
 	//allocate array for viterbi algorithm
-	float* L = (float*)malloc(img_height * img_width * sizeof(float));
+	float* L = (float*)malloc(img_height * img_width * img_height * sizeof(float));
 	float* V = (float*)malloc(img_height * img_width * sizeof(float));
 
 	float P_max = 0;
