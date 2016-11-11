@@ -37,22 +37,24 @@ __kernel void initV(__global float *V, int img_height, int img_width, int start_
 	V[(row * img_width) + start_column] = 0;	
 }
 
-__kernel void viterbi_forward2(__global const unsigned char *img, __global float *L, __global float *line_x, int img_height, int img_width, __local float* V_old, __local float* V_new, __local float *x_cord)
+__kernel void viterbi_forward2(	__global const unsigned char *img, 
+								__global float *L, 
+								__global float *line_x, 
+								__local float* V_old,
+								__local float* V_new,
+								__local float *x_cord,
+								int img_height,
+								int img_width, 
+								int g_high
+								int g_low)
 {
-	
-	if (img == 0 && img_height > 0 && img_width > 0 && line_x == 0)
-	{
-		return;
-	}
-	
 	int start_column = get_global_id(0);
 	long L_id = img_height * img_width * start_column; 
 	
 	float P_max = 0;
 	float x_max = 0;
 	float max_val = 0;
-	int i = 0;
-	pix_type pixel_value = 0;
+	float pixel_value = 0;
 	__local float *temp; // maybe may need to be passed with size as argument and set with clSetKernelArgs
 
 	// init first column with zeros
@@ -60,7 +62,7 @@ __kernel void viterbi_forward2(__global const unsigned char *img, __global float
 	{
 		V_old[m] = 0;
 	}
-	for (int n = i; n < (img_width - 1); n++)
+	for (int n = start_column; n < (img_width - 1); n++)
 	{
 		for (int j = 0; j < img_height; j++)
 		{
@@ -99,13 +101,10 @@ __kernel void viterbi_forward2(__global const unsigned char *img, __global float
 	}
 	//backwards phase - retrace the path
 	x_cord[(img_width - 1)] = x_max;
-	for (int n = (img_width - 1); n > i; n--)
+	for (int n = (img_width - 1); n > start_column; n--)
 	{
 		x_cord[n - 1] = x_cord[n] + L[L_id + (x_cord[n] * img_width) + (n - 1)]; //L[L_id][row][column]
 	}
 	// save only last pixel position
-	line_x[i] = x_cord[i];
-	P_max = 0;
-	x_max = 0;
-
+	line_x[start_column] = x_cord[start_column];
 }

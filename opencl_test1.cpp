@@ -18,6 +18,7 @@ const size_t MEM_SIZE = 10000101;
 const char VITERBI_KERNEL_FILE[] = "viterbi_kernel.cl";
 const char VITERBI_INIT_FILE[] = "init_V_kernel.cl";
 const char VITERBI_FORWARD_FUNCTION[] = "viterbi_forward";
+const char VITERBI_FORWARD2_FUNCTION[] = "viterbi_forward2";
 const char VITERBI_INIT_V_FUNCTION[] = "initV";
 
 size_t readKernelFile(char *source_str, const char *fileName)
@@ -534,6 +535,88 @@ int viterbiLineDetect3(const pix_type *img, unsigned int img_height, unsigned in
 	free(L);
 	free(x_cord);
 	return 1;
+}
+
+int viterbiLineOpenCL2(	const unsigned char *img,
+						size_t img_height,
+						size_t img_width,
+						float *line_x,
+						int g_low, int g_high,
+						cl_command_queue &command_queue,
+						cl_context &context,
+						cl_device_id device_id)
+{
+	//read kernel file
+	char *source_str = (char*)malloc(MAX_SOURCE_SIZE);
+	// Load the source code containing the kernel*/
+	size_t source_size = readKernelFile(source_str, VITERBI_KERNEL_FILE);
+	size_t img_size = (img_height * img_width);
+	int err = 0;
+	cl_program program = clCreateProgramWithSource(context, 1, (const char **)&source_str,
+		(const size_t *)&source_size, &err);
+	if (CL_SUCCESS != err)
+	{
+		return err;
+	}
+	// Build Kernel Program */
+	err = clBuildProgram(program, 1, &device_id, NULL, NULL, NULL);
+	if (err == CL_BUILD_PROGRAM_FAILURE) {
+		// Determine the size of the log
+		size_t log_size;
+		clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+
+		// Allocate memory for the log
+		char *log = (char *)malloc(log_size);
+
+		// Get the log
+		clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
+
+		// Print the log
+		printf("%s\n", log);
+		free(log);
+	}
+
+	// Create OpenCL Kernel */
+	cl_kernel viterbi_forward = clCreateKernel(program, VITERBI_FORWARD2_FUNCTION, &err);
+
+	size_t global_size = img_width; // maybe make it later so it can be diveided by Prefered opencl device multiple
+
+	cl_mem cmImg = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(unsigned char) * img_size, NULL, &err);
+	err = clEnqueueWriteBuffer(command_queue, cmImg, CL_FALSE, 0, sizeof(unsigned char) * img_size, img, 0, NULL, NULL);
+
+	cl_mem cmLine_x = clCreateBuffer(context, CL_MEM_READ_WRITE, img_width * sizeof(float), NULL, &err);
+	cl_mem cmL = clCreateBuffer(context, CL_MEM_READ_WRITE, img_size * global_size * sizeof(float), NULL, &err);
+
+	err = clSetKernelArg(viterbi_forward, 0, sizeof(cl_mem), (void*)&cmImg);
+	err |= clSetKernelArg(viterbi_forward, 1, sizeof(cl_mem), (void*)&cmL);
+	err |= clSetKernelArg(viterbi_forward, 2, sizeof(float) * img_height, NULL);
+	err |= clSetKernelArg(viterbi_forward, 3, sizeof(float) * img_height, NULL);
+	err |= clSetKernelArg(viterbi_forward, 4, sizeof(float) * img_width, NULL);
+	err |= clSetKernelArg(viterbi_forward, 6, sizeof(cl_int), (void*)&img_height);
+	err |= clSetKernelArg(viterbi_forward, 7, sizeof(cl_int), (void*)&img_width);
+	err |= clSetKernelArg(viterbi_forward, 8, sizeof(cl_int), (void*)&g_high);
+	err |= clSetKernelArg(viterbi_forward, 9, sizeof(cl_int), (void*)&g_low);
+	
+	if (CL_SUCCESS != err)
+	{
+		return err; //
+	}
+
+	err = clEnqueueNDRangeKernel(command_queue, viterbi_forward, 1, NULL, &global_size, NULL, 0, NULL, NULL);
+
+	// Copy results from the memory buffer */
+	err = clEnqueueReadBuffer(command_queue, cmLine_x, CL_TRUE, 0,
+		img_width * sizeof(float), line_x, 0, NULL, NULL);
+	
+	line_x[img_width - 1] = line_x[img_width - 2];
+	//realase resources
+	err = clReleaseKernel(viterbi_forward);
+	err = clReleaseProgram(program);
+	err = clReleaseMemObject(cmLine_x);
+	err = clReleaseMemObject(cmL);
+	err = clReleaseMemObject(cmImg);
+	free(source_str);
+	return CL_SUCCESS;
 }
 
 //#pragma comment(lib, "OpenCL.lib")
