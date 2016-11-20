@@ -362,7 +362,7 @@ int viterbiLineOpenCL(	const unsigned char *img,
 		// Execute OpenCL Kernel */
 		
 		err = clEnqueueNDRangeKernel(command_queue, init_V, 1, NULL, &global_size, NULL, 0, NULL, NULL);
-		/*CL_INVALID_COMMAND_QUEUE;
+		CL_INVALID_COMMAND_QUEUE;
 		CL_INVALID_KERNEL;
 		CL_INVALID_CONTEXT;
 		CL_INVALID_KERNEL_ARGS;
@@ -377,7 +377,7 @@ int viterbiLineOpenCL(	const unsigned char *img,
 		CL_OUT_OF_RESOURCES;
 		CL_MEM_OBJECT_ALLOCATION_FAILURE;
 		CL_INVALID_EVENT_WAIT_LIST;
-		CL_OUT_OF_HOST_MEMORY;*/
+		CL_OUT_OF_HOST_MEMORY;
 		// Copy results from the memory buffer */
 		err = clEnqueueReadBuffer(command_queue, cmV, CL_TRUE, 0,
 			VL_size * sizeof(float), V, 0, NULL, NULL);
@@ -499,9 +499,9 @@ int viterbiLineDetect3(const pix_type *img, unsigned int img_height, unsigned in
 						continue;
 					}
 					pixel_value = img[(img_width * j) + n];
-					if ((pixel_value + V[((j + g) * img_width) + n]) > max_val)
+					if ((pixel_value + V[(j * img_width) + n]) > max_val)
 					{
-						max_val = pixel_value + V[((j + g) * img_width) + n];
+						max_val = pixel_value + V[(j * img_width) + n];
 						L[(j * img_width) + n] = g;
 					}
 				}
@@ -540,7 +540,7 @@ int viterbiLineDetect3(const pix_type *img, unsigned int img_height, unsigned in
 int viterbiLineOpenCL2(	const unsigned char *img,
 						size_t img_height,
 						size_t img_width,
-						float *line_x,
+						int *line_x,
 						int g_low, int g_high,
 						cl_command_queue &command_queue,
 						cl_context &context,
@@ -584,14 +584,22 @@ int viterbiLineOpenCL2(	const unsigned char *img,
 	cl_mem cmImg = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(unsigned char) * img_size, NULL, &err);
 	err = clEnqueueWriteBuffer(command_queue, cmImg, CL_FALSE, 0, sizeof(unsigned char) * img_size, img, 0, NULL, NULL);
 
-	cl_mem cmLine_x = clCreateBuffer(context, CL_MEM_READ_WRITE, img_width * sizeof(float), NULL, &err);
+	//float *line_x = (float*)malloc(sizeof(float) * img_width);
+	//float *L = (float*)malloc(sizeof(float) * global_size * img_size);
+	cl_mem cmLine_x = clCreateBuffer(context, CL_MEM_READ_WRITE, img_width * sizeof(int), NULL, &err);
+	cl_mem cmX_cord = clCreateBuffer(context, CL_MEM_READ_WRITE, img_width * sizeof(int), NULL, &err);
+	cl_mem cmV1 = clCreateBuffer(context, CL_MEM_READ_WRITE, img_height * img_width * sizeof(float), NULL, &err);
+	cl_mem cmV2 = clCreateBuffer(context, CL_MEM_READ_WRITE, img_height * img_width * sizeof(float), NULL, &err);
 	cl_mem cmL = clCreateBuffer(context, CL_MEM_READ_WRITE, img_size * global_size * sizeof(float), NULL, &err);
+	//err = clEnqueueWriteBuffer(command_queue, cmLine_x, CL_FALSE, 0, sizeof(float) * img_width, line_x, NULL, NULL);
+	//err = clEnqueueWriteBuffer(command_queue, cmL, CL_FALSE, 0, sizeof(float) * img_size * global_size, L, 0, NULL, NULL);
 
 	err = clSetKernelArg(viterbi_forward, 0, sizeof(cl_mem), (void*)&cmImg);
 	err |= clSetKernelArg(viterbi_forward, 1, sizeof(cl_mem), (void*)&cmL);
-	err |= clSetKernelArg(viterbi_forward, 2, sizeof(float) * img_height, NULL);
-	err |= clSetKernelArg(viterbi_forward, 3, sizeof(float) * img_height, NULL);
-	err |= clSetKernelArg(viterbi_forward, 4, sizeof(float) * img_width, NULL);
+	err |= clSetKernelArg(viterbi_forward, 2, sizeof(cl_mem), (void*)&cmLine_x);
+	err |= clSetKernelArg(viterbi_forward, 3, sizeof(cl_mem), (void*)&cmV1);
+	err |= clSetKernelArg(viterbi_forward, 4, sizeof(cl_mem), (void*)&cmV2);
+	err |= clSetKernelArg(viterbi_forward, 5, sizeof(cl_mem), (void*)&cmX_cord);
 	err |= clSetKernelArg(viterbi_forward, 6, sizeof(cl_int), (void*)&img_height);
 	err |= clSetKernelArg(viterbi_forward, 7, sizeof(cl_int), (void*)&img_width);
 	err |= clSetKernelArg(viterbi_forward, 8, sizeof(cl_int), (void*)&g_high);
@@ -606,7 +614,7 @@ int viterbiLineOpenCL2(	const unsigned char *img,
 
 	// Copy results from the memory buffer */
 	err = clEnqueueReadBuffer(command_queue, cmLine_x, CL_TRUE, 0,
-		img_width * sizeof(float), line_x, 0, NULL, NULL);
+		img_width * sizeof(int), line_x, 0, NULL, NULL);
 	
 	line_x[img_width - 1] = line_x[img_width - 2];
 	//realase resources
@@ -682,22 +690,23 @@ int main(void)
 	}
 
 	//vector_add_OpenCL();
-	vectorAdd();
-	CImg<unsigned char> img("line_1.bmp");
+	//vectorAdd();
+	CImg<unsigned char> img("line_3.bmp");
 	//img.resize(img.height() / 2, img.width() / 2, 1);
 	CImg<unsigned char> gray_img(img.width(), img.height(), 1, 1, 0);
 	rgb2Gray(img, gray_img);
 	//viterbiLineDetect(gray_img, img, -2, 2);
 	unsigned char *img_out = new unsigned char[img.width() * img.height()];
 	memcpy(img_out, gray_img.data(0, 0, 0, 0), img.width() * img.height());
-	unsigned int *line_x = new unsigned int[img.width()];
-	viterbiLineOpenCL(img_out, img.height(), img.width(), line_x, -2, 2, command_queue, context, device_id);
+	int *line_x = new int[img.width()];
+	//viterbiLineOpenCL(img_out, img.height(), img.width(), line_x, -2, 2, command_queue, context, device_id);
+	viterbiLineOpenCL2(img_out, img.height(), img.width(), line_x, -2, 2, command_queue, context, device_id);
 	//viterbiLineDetect3(img_out, img.height(), img.width(), line_x, -2, 2);
 	for (int i = 0; i < img.width(); i++)
 	{
-		img(i, line_x[i], 0, 0) = 255;
-		img(i, line_x[i], 0, 1) = 0;
-		img(i, line_x[i], 0, 2) = 0;
+		img(i, (int)line_x[i], 0, 0) = 255;
+		img(i, (int)line_x[i], 0, 1) = 0;
+		img(i, (int)line_x[i], 0, 2) = 0;
 	}
 	CImgDisplay gray_disp(gray_img, "Image gray");
 	CImgDisplay rgb_disp(img, "Image rgb");

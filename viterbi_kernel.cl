@@ -37,26 +37,28 @@ __kernel void initV(__global float *V, int img_height, int img_width, int start_
 	V[(row * img_width) + start_column] = 0;	
 }
 
-__kernel void viterbi_forward2(	__global const unsigned char *img, 
+__kernel void viterbi_forward2(__global const unsigned char *img, 
 								__global float *L, 
-								__global float *line_x, 
-								__local float* V_old,
-								__local float* V_new,
-								__local float *x_cord,
+								__global int *line_x, 
+								__global float* V_1,
+								__global float* V_2,
+								__global int *x_cord,
 								int img_height,
 								int img_width, 
-								int g_high
+								int g_high,
 								int g_low)
 {
 	int start_column = get_global_id(0);
 	long L_id = img_height * img_width * start_column; 
+	int V_id = img_height *start_column;
 	
 	float P_max = 0;
 	float x_max = 0;
 	float max_val = 0;
 	float pixel_value = 0;
-	__local float *temp; // maybe may need to be passed with size as argument and set with clSetKernelArgs
-
+	__global float *temp_buffer; // maybe may need to be passed with size as argument and set with clSetKernelArgs
+	__global float *V_old = &V_1[V_id];
+	__global float *V_new = &V_2[V_id];
 	// init first column with zeros
 	for (int m = 0; m < img_height; m++)
 	{
@@ -78,24 +80,24 @@ __kernel void viterbi_forward2(	__global const unsigned char *img,
 					continue;
 				}
 				pixel_value = img[((j + g) * img_width) + n];
-				if ((pixel_value + V_old[(img_width * j)]) > max_val)
+				if ((pixel_value + V_old[j]) > max_val)
 				{
-					max_val = pixel_value + V_old[(img_width * j)];
+					max_val = pixel_value + V_old[j];
 					L[L_id + (j * img_width) + n] = g;
 				}
 			}
-			V_new[(img_width * j)] = max_val;
+			V_new[j] = max_val;
 		}
-		temp = &V_old[0]; // have to do it or both pointers will have same adress
+		temp_buffer = &V_old[0]; // have to do it or both pointers will have same adress
 		V_old = &V_new[0];
-		V_new = &temp[0];
+		V_new = &temp_buffer[0];
 	}
 	//find biggest cost value in last column
 	for (int j = 0; j < img_height; j++)
 	{
-		if (V_old[(j * img_width)] > P_max)
+		if (V_old[j] > P_max)
 		{
-			P_max = V_old[(j * img_width)];
+			P_max = V_old[j];
 			x_max = j;
 		}
 	}
