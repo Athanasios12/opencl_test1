@@ -1,3 +1,5 @@
+#ifndef TEST_OPENCL_H
+#define TEST_OPENCL_H
 /*
 * Copyright 1993-2010 NVIDIA Corporation.  All rights reserved.
 *
@@ -273,3 +275,4 @@ void VectorAddHost(const float* pfData1, const float* pfData2, float* pfResult, 
 		pfResult[i] = pfData1[i] + pfData2[i];
 	}
 }
+#endif
