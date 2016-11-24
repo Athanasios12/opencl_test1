@@ -467,7 +467,7 @@ int viterbiLineDetect3(const pix_type *img, unsigned int img_height, unsigned in
 		return 0;
 	}
 	//allocate array for viterbi algorithm
-	float* L = (float*)malloc(img_height * img_width * img_height * sizeof(float));
+	float* L = (float*)malloc(img_height * img_width * sizeof(float));
 	float* V = (float*)malloc(img_height * img_width * sizeof(float));
 
 	float P_max = 0;
@@ -479,6 +479,7 @@ int viterbiLineDetect3(const pix_type *img, unsigned int img_height, unsigned in
 	while (i < (img_width - 1))
 	{
 		// init first column with zeros
+		clock_t start = clock();
 		for (int m = 0; m < img_height; m++)
 		{
 			V[(m * img_width) + i] = 0;
@@ -490,7 +491,7 @@ int viterbiLineDetect3(const pix_type *img, unsigned int img_height, unsigned in
 				max_val = 0;
 				for (int g = g_low; g <= g_high; g++)
 				{
-					if (j + g >(img_height - 1))
+					if ((j + g) >(int)(img_height - 1))
 					{
 						break;
 					}
@@ -498,16 +499,19 @@ int viterbiLineDetect3(const pix_type *img, unsigned int img_height, unsigned in
 					{
 						continue;
 					}
-					pixel_value = img[(img_width * j) + n];
-					if ((pixel_value + V[(j * img_width) + n]) > max_val)
+					pixel_value = img[((j + g) * img_width) + n];
+					if ((pixel_value + V[(img_width * j) + n]) > max_val)
 					{
-						max_val = pixel_value + V[(j * img_width) + n];
+						max_val = pixel_value + V[(img_width * j) + n];
 						L[(j * img_width) + n] = g;
 					}
 				}
 				V[(j * img_width) + (n + 1)] = max_val;
 			}
 		}
+		clock_t end = clock();
+		double seconds = (double)(end - start);
+		//printf("Viterbi execution time : %f ms\n", seconds);
 		//find biggest cost value in last column
 		for (int j = 0; j < img_height; j++)
 		{
@@ -609,7 +613,8 @@ int viterbiLineOpenCL2(	const unsigned char *img,
 	{
 		return err; //
 	}
-
+	//to big buffer will fail with CL_MEM_OBJECT_ALLOCATION_FAILURE - have to process it with chunks
+	//not all columns at the same time, call it couple of times
 	err = clEnqueueNDRangeKernel(command_queue, viterbi_forward, 1, NULL, &global_size, NULL, 0, NULL, NULL);
 
 	// Copy results from the memory buffer */
@@ -700,8 +705,10 @@ int main(void)
 	memcpy(img_out, gray_img.data(0, 0, 0, 0), img.width() * img.height());
 	int *line_x = new int[img.width()];
 	//viterbiLineOpenCL(img_out, img.height(), img.width(), line_x, -2, 2, command_queue, context, device_id);
+	clock_t start = clock();
 	viterbiLineOpenCL2(img_out, img.height(), img.width(), line_x, -2, 2, command_queue, context, device_id);
-	//viterbiLineDetect3(img_out, img.height(), img.width(), line_x, -2, 2);
+	clock_t end = clock();
+	double time_ms = (double)(end - start);
 	for (int i = 0; i < img.width(); i++)
 	{
 		img(i, (int)line_x[i], 0, 0) = 255;
@@ -709,7 +716,20 @@ int main(void)
 		img(i, (int)line_x[i], 0, 2) = 0;
 	}
 	CImgDisplay gray_disp(gray_img, "Image gray");
-	CImgDisplay rgb_disp(img, "Image rgb");
+	CImgDisplay rgb_disp(img, "Image rgb1");
+	printf("\nViterbi parallel time %f ms\n", time_ms);
+	start = clock();
+	viterbiLineDetect3(img_out, (unsigned int)img.height(), (unsigned int)img.width(), (unsigned int*)line_x, -2, 2);
+	end = clock();
+	time_ms = (double)(end - start);
+	for (int i = 0; i < img.width(); i++)
+	{
+		img(i, (int)line_x[i], 0, 0) = 255;
+		img(i, (int)line_x[i], 0, 1) = 0;
+		img(i, (int)line_x[i], 0, 2) = 0;
+	}
+	printf("\nViterbi serial time %f ms\n", time_ms);
+	CImgDisplay rgb1_disp(img, "Image rgb2");
 	while (!rgb_disp.is_closed());
 	delete[] img_out;
 	delete[] line_x;
