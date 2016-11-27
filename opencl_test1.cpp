@@ -258,14 +258,14 @@ int vectorAdd()
 	return 0;
 }
 
-int viterbiLineOpenCL(	const unsigned char *img, 
-						size_t img_height, 
-						size_t img_width,
-						unsigned int *line_x, 
-						int g_low, int g_high, 
-						cl_command_queue &command_queue,
-						cl_context &context,
-						cl_device_id device_id)
+int viterbiLineOpenCL_rows(	const unsigned char *img, 
+							size_t img_height, 
+							size_t img_width,
+							unsigned int *line_x, 
+							int g_low, int g_high, 
+							cl_command_queue &command_queue,
+							cl_context &context,
+							cl_device_id device_id)
 {
 	//read kernel file
 	char *source_str = (char*)malloc(MAX_SOURCE_SIZE);
@@ -460,7 +460,7 @@ int viterbiLineOpenCL(	const unsigned char *img,
 }
 
 template <class pix_type>
-int viterbiLineDetect3(const pix_type *img, unsigned int img_height, unsigned int img_width, unsigned int *line_x, int g_low, int g_high)
+int viterbiLineDetect(const pix_type *img, unsigned int img_height, unsigned int img_width, unsigned int *line_x, int g_low, int g_high)
 {
 	if (img == 0 && img_height > 0 && img_width > 0 && line_x == 0)
 	{
@@ -499,10 +499,11 @@ int viterbiLineDetect3(const pix_type *img, unsigned int img_height, unsigned in
 					{
 						continue;
 					}
-					pixel_value = img[((j + g) * img_width) + n];
-					if ((pixel_value + V[(img_width * j) + n]) > max_val)
+					int curr_id = j + g;
+					pixel_value = img[((curr_id)* img_width) + n];
+					if ((pixel_value + V[(img_width * curr_id) + n]) > max_val)
 					{
-						max_val = pixel_value + V[(img_width * j) + n];
+						max_val = pixel_value + V[(img_width * curr_id) + n];
 						L[(j * img_width) + n] = g;
 					}
 				}
@@ -541,7 +542,7 @@ int viterbiLineDetect3(const pix_type *img, unsigned int img_height, unsigned in
 	return 1;
 }
 
-int viterbiLineOpenCL2(	const unsigned char *img,
+int viterbiLineOpenCL_cols(	const unsigned char *img,
 						size_t img_height,
 						size_t img_width,
 						int *line_x,
@@ -579,7 +580,15 @@ int viterbiLineOpenCL2(	const unsigned char *img,
 		printf("%s\n", log);
 		free(log);
 	}
-
+	
+	//check available memory
+	long long dev_memory = 0;
+	err = clGetDeviceInfo(device_id, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(long long), &dev_memory, NULL);
+	cl_long max_alloc = 0;
+	err = clGetDeviceInfo(device_id, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(cl_long), &max_alloc, NULL);
+	size_t max_arg_size = 0;
+	err = clGetDeviceInfo(device_id, CL_DEVICE_MAX_PARAMETER_SIZE, sizeof(size_t), &max_arg_size, NULL);
+	
 	// Create OpenCL Kernel */
 	cl_kernel viterbi_forward = clCreateKernel(program, VITERBI_FORWARD2_FUNCTION, &err);
 
@@ -595,6 +604,11 @@ int viterbiLineOpenCL2(	const unsigned char *img,
 	cl_mem cmV1 = clCreateBuffer(context, CL_MEM_READ_WRITE, img_height * img_width * sizeof(float), NULL, &err);
 	cl_mem cmV2 = clCreateBuffer(context, CL_MEM_READ_WRITE, img_height * img_width * sizeof(float), NULL, &err);
 	cl_mem cmL = clCreateBuffer(context, CL_MEM_READ_WRITE, img_size * global_size * sizeof(float), NULL, &err);
+
+	int tot_mem = (int)(((img_size * global_size * sizeof(float)) + 
+						(2 * img_height * img_width * sizeof(float)) + 
+						(2 * img_width * sizeof(int))) / (1024 * 1024));
+	printf("\nTotal memory used %d MB\n", tot_mem);
 	//err = clEnqueueWriteBuffer(command_queue, cmLine_x, CL_FALSE, 0, sizeof(float) * img_width, line_x, NULL, NULL);
 	//err = clEnqueueWriteBuffer(command_queue, cmL, CL_FALSE, 0, sizeof(float) * img_size * global_size, L, 0, NULL, NULL);
 
@@ -618,7 +632,7 @@ int viterbiLineOpenCL2(	const unsigned char *img,
 	err = clEnqueueNDRangeKernel(command_queue, viterbi_forward, 1, NULL, &global_size, NULL, 0, NULL, NULL);
 
 	// Copy results from the memory buffer */
-	err = clEnqueueReadBuffer(command_queue, cmLine_x, CL_TRUE, 0,
+	err |= clEnqueueReadBuffer(command_queue, cmLine_x, CL_TRUE, 0,
 		img_width * sizeof(int), line_x, 0, NULL, NULL);
 	
 	line_x[img_width - 1] = line_x[img_width - 2];
@@ -628,11 +642,15 @@ int viterbiLineOpenCL2(	const unsigned char *img,
 	err = clReleaseMemObject(cmLine_x);
 	err = clReleaseMemObject(cmL);
 	err = clReleaseMemObject(cmImg);
+	err = clReleaseMemObject(cmX_cord);
+	err = clReleaseMemObject(cmV1);
+	err = clReleaseMemObject(cmV2);
 	free(source_str);
 	return CL_SUCCESS;
 }
 
-//#pragma comment(lib, "OpenCL.lib")
+const char IMG_FILE[] = "line_5.bmp";
+
 int main(void)
 {
 	//getting number of available platforms
@@ -696,7 +714,7 @@ int main(void)
 
 	//vector_add_OpenCL();
 	//vectorAdd();
-	CImg<unsigned char> img("line_3.bmp");
+	CImg<unsigned char> img(IMG_FILE);
 	//img.resize(img.height() / 2, img.width() / 2, 1);
 	CImg<unsigned char> gray_img(img.width(), img.height(), 1, 1, 0);
 	rgb2Gray(img, gray_img);
@@ -706,7 +724,7 @@ int main(void)
 	int *line_x = new int[img.width()];
 	//viterbiLineOpenCL(img_out, img.height(), img.width(), line_x, -2, 2, command_queue, context, device_id);
 	clock_t start = clock();
-	viterbiLineOpenCL2(img_out, img.height(), img.width(), line_x, -2, 2, command_queue, context, device_id);
+	viterbiLineOpenCL_cols(img_out, img.height(), img.width(), line_x, -2, 2, command_queue, context, device_id);
 	clock_t end = clock();
 	double time_ms = (double)(end - start);
 	for (int i = 0; i < img.width(); i++)
@@ -715,11 +733,11 @@ int main(void)
 		img(i, (int)line_x[i], 0, 1) = 0;
 		img(i, (int)line_x[i], 0, 2) = 0;
 	}
-	CImgDisplay gray_disp(gray_img, "Image gray");
-	CImgDisplay rgb_disp(img, "Image rgb1");
-	printf("\nViterbi parallel time %f ms\n", time_ms);
+	CImgDisplay gray_disp(gray_img, "image gray");
+	CImgDisplay rgb_disp(img, "image rgb1");
+	printf("\nviterbi parallel time %f ms\n", time_ms);
 	start = clock();
-	viterbiLineDetect3(img_out, (unsigned int)img.height(), (unsigned int)img.width(), (unsigned int*)line_x, -2, 2);
+	viterbiLineDetect(img_out, (unsigned int)img.height(), (unsigned int)img.width(), (unsigned int*)line_x, -2, 2);
 	end = clock();
 	time_ms = (double)(end - start);
 	for (int i = 0; i < img.width(); i++)
@@ -730,7 +748,7 @@ int main(void)
 	}
 	printf("\nViterbi serial time %f ms\n", time_ms);
 	CImgDisplay rgb1_disp(img, "Image rgb2");
-	while (!rgb_disp.is_closed());
+	while (!rgb1_disp.is_closed());
 	delete[] img_out;
 	delete[] line_x;
 	//cleanup

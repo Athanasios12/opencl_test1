@@ -80,9 +80,9 @@ __kernel void viterbi_forward2(__global const unsigned char *img,
 					continue;
 				}
 				pixel_value = img[((j + g) * img_width) + n];
-				if ((pixel_value + V_old[j]) > max_val)
+				if ((pixel_value + V_old[j + g]) > max_val)
 				{
-					max_val = pixel_value + V_old[j];
+					max_val = pixel_value + V_old[j + g];
 					L[L_id + (j * img_width) + n] = g;
 				}
 			}
