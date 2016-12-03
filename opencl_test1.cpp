@@ -580,19 +580,26 @@ int viterbiLineOpenCL_cols(	const unsigned char *img,
 		free(log);
 	}
 	
-	//check available memory
-	long long dev_memory = 0;
-	err = clGetDeviceInfo(device_id, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(long long), &dev_memory, NULL);
-	cl_long max_alloc = 0;
-	err = clGetDeviceInfo(device_id, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(cl_long), &max_alloc, NULL);
-	size_t max_arg_size = 0;
-	err = clGetDeviceInfo(device_id, CL_DEVICE_MAX_PARAMETER_SIZE, sizeof(size_t), &max_arg_size, NULL);
 	
 	// Create OpenCL Kernel */
 	cl_kernel viterbi_forward = clCreateKernel(program, VITERBI_FORWARD2_FUNCTION, &err);
 
 	size_t global_size = img_width; // maybe make it later so it can be diveided by Prefered opencl device multiple
 
+	//check available memory
+	long long dev_memory = 0;
+	err = clGetDeviceInfo(device_id, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(long long), &dev_memory, NULL);
+	int dev_mem = (int)(dev_memory / (1024 * 1024));//MB
+	int tot_mem = (int)(((img_size * global_size * sizeof(float)) +
+		(2 * img_height * img_width * sizeof(float)) +
+		(2 * img_width * sizeof(int)) + (img_size * sizeof(unsigned char))) / (1024 * 1024));
+	printf("\nTotal memory used %d MB\n", tot_mem);
+	//handle not enough GPU memory
+	if (dev_mem < tot_mem)
+	{
+		int mem_multiple = (int)(tot_mem / dev_mem);
+		global_size = img_width / (mem_multiple + 1);
+	}
 	cl_mem cmImg = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(unsigned char) * img_size, NULL, &err);
 	err = clEnqueueWriteBuffer(command_queue, cmImg, CL_FALSE, 0, sizeof(unsigned char) * img_size, img, 0, NULL, NULL);
 
@@ -604,10 +611,6 @@ int viterbiLineOpenCL_cols(	const unsigned char *img,
 	cl_mem cmV2 = clCreateBuffer(context, CL_MEM_READ_WRITE, img_height * img_width * sizeof(float), NULL, &err);
 	cl_mem cmL = clCreateBuffer(context, CL_MEM_READ_WRITE, img_size * global_size * sizeof(float), NULL, &err);
 
-	int tot_mem = (int)(((img_size * global_size * sizeof(float)) + 
-						(2 * img_height * img_width * sizeof(float)) + 
-						(2 * img_width * sizeof(int))) / (1024 * 1024));
-	printf("\nTotal memory used %d MB\n", tot_mem);
 	//err = clEnqueueWriteBuffer(command_queue, cmLine_x, CL_FALSE, 0, sizeof(float) * img_width, line_x, NULL, NULL);
 	//err = clEnqueueWriteBuffer(command_queue, cmL, CL_FALSE, 0, sizeof(float) * img_size * global_size, L, 0, NULL, NULL);
 
@@ -628,12 +631,18 @@ int viterbiLineOpenCL_cols(	const unsigned char *img,
 	}
 	//to big buffer will fail with CL_MEM_OBJECT_ALLOCATION_FAILURE - have to process it with chunks
 	//not all columns at the same time, call it couple of times
-	err = clEnqueueNDRangeKernel(command_queue, viterbi_forward, 1, NULL, &global_size, NULL, 0, NULL, NULL);
+	int start_column = 0; // each iteration add global_size untile start_column >= img_width
+	err = clEnqueueWriteBuffer(command_queue, cmLine_x, CL_FALSE, 0, sizeof(int) * img_width, line_x, 0, NULL, NULL);
+	while (start_column < img_width && !err)
+	{
+		err = clSetKernelArg(viterbi_forward, 10, sizeof(cl_int), (void*)&start_column);
+		err |= clEnqueueNDRangeKernel(command_queue, viterbi_forward, 1, NULL, &global_size, NULL, 0, NULL, NULL);
 
-	// Copy results from the memory buffer */
-	err |= clEnqueueReadBuffer(command_queue, cmLine_x, CL_TRUE, 0,
-		img_width * sizeof(int), line_x, 0, NULL, NULL);
-	
+		// Copy results from the memory buffer */
+		err |= clEnqueueReadBuffer(command_queue, cmLine_x, CL_TRUE, 0,
+			img_width * sizeof(int), line_x, 0, NULL, NULL);
+		start_column += global_size;
+	}	
 	line_x[img_width - 1] = line_x[img_width - 2];
 	//realase resources
 	err = clReleaseKernel(viterbi_forward);
