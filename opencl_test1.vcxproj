@@ -22,6 +22,7 @@
     <ProjectGuid>{BC4907EF-54B3-44E1-A4E4-E55084209D0E}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>opencl_test1</RootNamespace>
+    <ProjectName>opencl_viterbi</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -153,15 +154,20 @@
     <ClInclude Include="test_opencl.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="Viterbi.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="opencl_test1.cpp" />
+    <ClCompile Include="opencl_viterbi.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="Viterbi.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="viterbi_kernel.cl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
