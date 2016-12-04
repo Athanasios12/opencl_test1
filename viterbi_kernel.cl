@@ -18,9 +18,9 @@ __kernel void viterbi_forward( __global const unsigned char * img, __global floa
 			continue;
 		}
 		pixel_value = img[(img_width * (row + g)) + column];
-		if ((pixel_value + V[(row * img_width) + (column)]) > max_val)
+		if ((pixel_value + V[((row + g) * img_width) + (column)]) > max_val)
 		{
-			max_val = pixel_value + V[(row * img_width) + (column)];
+			max_val = pixel_value + V[((row + g) * img_width) + (column)];
 			L[(row * img_width) + column] = g;
 		}
 	}
@@ -37,7 +37,7 @@ __kernel void initV(__global float *V, int img_height, int img_width, int start_
 	V[(row * img_width) + start_column] = 0;	
 }
 
-__kernel void viterbi_forward2(__global const unsigned char *img, 
+__kernel void viterbi_function(__global const unsigned char *img,
 								__global float *L, 
 								__global int *line_x, 
 								__global float* V_1,
