@@ -239,6 +239,11 @@ FakesAssemblies/
 # Visual Studio 6 build log
 *.plg
 
+#Image files
+*.bmp
+*.png
+*.jpg
+
 # Visual Studio 6 workspace options file
 *.opt
 
