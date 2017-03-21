@@ -16,7 +16,7 @@ using namespace cimg_library;
 using namespace VITERBI;
 
 //image settings
-const char IMG_FILE[] = "line_7.bmp";
+const char IMG_FILE[] = "line_4.bmp";
 const int G_LOW = -2;
 const int G_HIGH = 2;
 

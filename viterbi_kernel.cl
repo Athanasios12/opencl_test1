@@ -25,6 +25,12 @@ __kernel void viterbi_forward( __global const unsigned char * img, __global floa
 		}
 	}
 	V[(row * img_width) + (column + 1)] = max_val;
+	//add blockade here to wait for all rows to get processed, after
+	//do the same trick with Vnew and Vold instead of calculating
+	//and storing V for every column not calculate onl for one column and call it again,
+	//instead call it for every column in range from <start_col; img_width - 2>
+	//After finishing all columns outside of kernel backtrack and save the solution, then call again for
+	//next start_col until start_col = img_width - 1;
 }
 
 __kernel void initV(__global float *V, int img_height, int img_width, int start_column)
