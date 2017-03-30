@@ -8,7 +8,6 @@
 #include <memory>
 #include <fstream>
 #include <string>
-#include "stdafx.h"
 
 using namespace cimg_library;
 
@@ -20,7 +19,7 @@ const char VITERBI_INIT_V_FUNCTION[] = "initV";
 
 namespace VITERBI
 {
-	size_t readKernelFile(std::string &source_str, const std::string &fileName);	
+	size_t readKernelFile(std::string &source_str, const std::string &fileName);
 	void fixGlobalSize(size_t &global_size, const size_t &local_size);
 	int viterbiLineOpenCL_rows(const unsigned char *img,
 		size_t img_height,
@@ -31,12 +30,12 @@ namespace VITERBI
 		cl_context &context,
 		cl_device_id device_id);
 
-	//template <class pix_type>
-	int viterbiLineDetect(const unsigned char *img, unsigned int img_height, unsigned int img_width, unsigned int *line_x, int g_low, int g_high);
+	//add std thread viterbi implementation on cpu
+	int viterbiLineDetect(const unsigned char *img, int img_height, int img_width, std::vector<unsigned int> &line_x, int g_low, int g_high);
 	int viterbiLineOpenCL_cols(const unsigned char *img,
 		size_t img_height,
 		size_t img_width,
-		int *line_x,
+		unsigned int *line_x,
 		int g_low, int g_high,
 		cl_command_queue &command_queue,
 		cl_context &context,

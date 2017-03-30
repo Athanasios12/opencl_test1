@@ -1,4 +1,3 @@
-#include "stdafx.h"
 #include "Viterbi.h"
 
 size_t VITERBI::readKernelFile(std::string &source_str, const std::string &fileName)
@@ -44,7 +43,6 @@ int VITERBI::viterbiLineOpenCL_rows(const unsigned char *img,
 	cl_device_id device_id)
 {
 	//read kernel file
-	//char *source_str = (char*)malloc(MAX_SOURCE_SIZE);]
 	int err = 0;
 	std::string source_str;
 	size_t img_size = (img_height * img_width);
@@ -54,10 +52,6 @@ int VITERBI::viterbiLineOpenCL_rows(const unsigned char *img,
 	{
 		return 1;
 	}
-	// Load the source code containing the kernel*/
-	//size_t source_size = readKernelFile(source_str, VITERBI_KERNEL_FILE);	
-	//size_t img_size = (img_height * img_width);
-	//int err = 0;
 	cl_program program = clCreateProgramWithSource(context, 1, (const char **)&source_str[0],
 		(const size_t *)&source_size, &err);
 	if (CL_SUCCESS != err)
@@ -84,84 +78,74 @@ int VITERBI::viterbiLineOpenCL_rows(const unsigned char *img,
 
 	// Create OpenCL Kernel */
 	cl_kernel viterbi_forward = clCreateKernel(program, VITERBI_FORWARD_FUNCTION, &err);
-	cl_kernel init_V = clCreateKernel(program, VITERBI_INIT_V_FUNCTION, &err);
 
 	size_t global_size = img_height;
-	size_t local_size = global_size;
 
-	size_t VL_size = img_size;
-	std::vector<float> L(VL_size, 0);
-	std::vector<float> V(VL_size, 0);
-	//float* L = (float*)malloc(VL_size * sizeof(float));
-	//float* V = (float*)malloc(VL_size * sizeof(float));
+	std::vector<float> L(img_size, 0);
+	std::vector<float> V_old(img_height, 0);
+	std::vector<float> V_new(img_height, 0);
 
 	cl_mem cmImg = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(unsigned char) * img_size, NULL, &err);
 	err = clEnqueueWriteBuffer(command_queue, cmImg, CL_FALSE, 0, sizeof(unsigned char) * img_size, img, 0, NULL, NULL);
 
-	cl_mem cmV = clCreateBuffer(context, CL_MEM_READ_WRITE, VL_size * sizeof(float), NULL, &err);
-	cl_mem cmL = clCreateBuffer(context, CL_MEM_READ_WRITE, VL_size* sizeof(float), NULL, &err);
+	cl_mem cmV_old = clCreateBuffer(context, CL_MEM_READ_WRITE, img_height * sizeof(float), NULL, &err);
+	cl_mem cmV_new = clCreateBuffer(context, CL_MEM_READ_WRITE, img_height * sizeof(float), NULL, &err);
+	cl_mem cmL = clCreateBuffer(context, CL_MEM_READ_WRITE, img_size * sizeof(float), NULL, &err);
 
 
-	err = clEnqueueWriteBuffer(command_queue, cmV, CL_FALSE, 0, sizeof(float) * VL_size, &V[0], 0, NULL, NULL);
-	err = clEnqueueWriteBuffer(command_queue, cmL, CL_FALSE, 0, sizeof(float) * VL_size, &L[0], 0, NULL, NULL);
+	err = clEnqueueWriteBuffer(command_queue, cmV_old, CL_FALSE, 0, sizeof(float) * img_height, &V_old[0], 0, NULL, NULL);
+	err = clEnqueueWriteBuffer(command_queue, cmV_new, CL_FALSE, 0, sizeof(float) * img_height, &V_new[0], 0, NULL, NULL);
+	err = clEnqueueWriteBuffer(command_queue, cmL, CL_FALSE, 0, sizeof(float) * img_size, &L[0], 0, NULL, NULL);
 
-	err = clSetKernelArg(init_V, 0, sizeof(cl_mem), (void*)&cmV);
-	err = clSetKernelArg(init_V, 1, sizeof(cl_int), (void*)&img_height);
-	err = clSetKernelArg(init_V, 2, sizeof(cl_int), (void*)&img_width);
-
+	int start_column = 0;
 	err = clSetKernelArg(viterbi_forward, 0, sizeof(cl_mem), (void*)&cmImg);
 	err = clSetKernelArg(viterbi_forward, 1, sizeof(cl_mem), (void*)&cmL);
-	err = clSetKernelArg(viterbi_forward, 2, sizeof(cl_mem), (void*)&cmV);
-	err = clSetKernelArg(viterbi_forward, 3, sizeof(cl_int), (void*)&img_height);
-	err = clSetKernelArg(viterbi_forward, 4, sizeof(cl_int), (void*)&img_width);
-	err = clSetKernelArg(viterbi_forward, 6, sizeof(cl_int), (void*)&g_low);
-	err = clSetKernelArg(viterbi_forward, 7, sizeof(cl_int), (void*)&g_high);
+	err = clSetKernelArg(viterbi_forward, 2, sizeof(cl_mem), (void*)&cmV_old);
+	err = clSetKernelArg(viterbi_forward, 3, sizeof(cl_mem), (void*)&cmV_new);
+	err = clSetKernelArg(viterbi_forward, 4, sizeof(cl_int), (void*)&img_height);
+	err = clSetKernelArg(viterbi_forward, 5, sizeof(cl_int), (void*)&img_width);
+	err = clSetKernelArg(viterbi_forward, 6, sizeof(cl_int), (void*)&start_column);
+	err = clSetKernelArg(viterbi_forward, 7, sizeof(cl_int), (void*)&g_low);
+	err = clSetKernelArg(viterbi_forward, 8, sizeof(cl_int), (void*)&g_high);
 
 	int i = 0;
 	float P_max = 0;
 	unsigned int x_max = 0;
+	std::vector<float> init_V(img_height, 0);
 	//allocate buffer x_cord
 	std::vector<unsigned int> x_cord(img_width, 0);
-	while (i < (img_width - 1) && !err)
-	{
-		err = clSetKernelArg(init_V, 3, sizeof(cl_int), (void*)&i);
-		// Execute OpenCL Kernel */		
-		err |= clEnqueueNDRangeKernel(command_queue, init_V, 1, NULL, &global_size, NULL, 0, NULL, NULL);
 
+	while (start_column < img_width && !err)
+	{
+		// Execute OpenCL Kernel */
+		err |= clEnqueueNDRangeKernel(command_queue, viterbi_forward, 1, NULL, &global_size, NULL, 0, NULL, NULL);
 		// Copy results from the memory buffer */
-		err |= clEnqueueReadBuffer(command_queue, cmV, CL_TRUE, 0,
-			VL_size * sizeof(float), &V[0], 0, NULL, NULL);
-		for (int column = i; column < (img_width - 1); column++)
-		{
-			err |= clSetKernelArg(viterbi_forward, 5, sizeof(cl_int), (void*)&column);
-			// Execute OpenCL Kernel */
-			err |= clEnqueueNDRangeKernel(command_queue, viterbi_forward, 1, NULL, &global_size, NULL, 0, NULL, NULL);
-			// Copy results from the memory buffer */
-			err |= clEnqueueReadBuffer(command_queue, cmL, CL_TRUE, 0,
-				VL_size * sizeof(float), &L[0], 0, NULL, NULL);
-			err |= clEnqueueReadBuffer(command_queue, cmV, CL_TRUE, 0,
-				VL_size * sizeof(float), &V[0], 0, NULL, NULL);
-		}
+		err |= clEnqueueReadBuffer(command_queue, cmL, CL_TRUE, 0,
+			img_size * sizeof(float), &L[0], 0, NULL, NULL);
+		err |= clEnqueueReadBuffer(command_queue, cmV_new, CL_TRUE, 0,
+			img_height * sizeof(float), &V_new[0], 0, NULL, NULL);
+
 		for (int j = 0; j < img_height; j++)
 		{
-			if (V[(img_width * j) + (img_width - 1)] > P_max)
+			if (V_new[j] > P_max)
 			{
-				P_max = V[(img_width * j) + (img_width - 1)];
+				P_max = V_new[j];
 				x_max = j;
 			}
 		}
 		//backwards phase - retrace the path
 		x_cord[(img_width - 1)] = x_max;
-		for (size_t n = (img_width - 1); n > i; n--)
+		for (size_t n = (img_width - 1); n > start_column; n--)
 		{
 			x_cord[n - 1] = x_cord[n] + static_cast<unsigned int>(L[(x_cord[n] * img_width) + (n - 1)]);
 		}
 		// save only last pixel position
-		line_x[i] = x_cord[i];
+		line_x[start_column] = x_cord[start_column];
 		P_max = 0;
 		x_max = 0;
-		++i;
-
+		V_old = init_V; // copy elements and init vold with zeros - check if works without it
+		++start_column;
+		err |= clSetKernelArg(viterbi_forward, 5, sizeof(cl_int), (void*)&start_column); // check if works without
 	}
 	if (!err)
 	{
@@ -170,20 +154,17 @@ int VITERBI::viterbiLineOpenCL_rows(const unsigned char *img,
 	//realase resources
 	err = clReleaseKernel(viterbi_forward);
 	err = clReleaseProgram(program);
-	err = clReleaseMemObject(cmV);
+	err = clReleaseMemObject(cmV_old);
+	err = clReleaseMemObject(cmV_new);
 	err = clReleaseMemObject(cmL);
 	err = clReleaseMemObject(cmImg);
-	//free(x_cord);
-	//free(L);
-	//free(V);
-	//free(source_str);
 	return err;
 }
 
 //template <class pix_type>
-int VITERBI::viterbiLineDetect(const unsigned char *img, unsigned int img_height, unsigned int img_width, unsigned int *line_x, int g_low, int g_high)
+int VITERBI::viterbiLineDetect(const unsigned char *img, int img_height, int img_width, std::vector<unsigned int> &line_x, int g_low, int g_high)
 {
-	if (img == 0 && img_height > 0 && img_width > 0 && line_x == 0)
+	if (img == 0 && img_height > 0 && img_width > 0)
 	{
 		return 1;
 	}
@@ -258,7 +239,7 @@ int VITERBI::viterbiLineDetect(const unsigned char *img, unsigned int img_height
 int VITERBI::viterbiLineOpenCL_cols(const unsigned char *img,
 	size_t img_height,
 	size_t img_width,
-	int *line_x,
+	unsigned int *line_x,
 	int g_low, int g_high,
 	cl_command_queue &command_queue,
 	cl_context &context,
@@ -302,7 +283,7 @@ int VITERBI::viterbiLineOpenCL_cols(const unsigned char *img,
 
 	size_t global_size = img_width; // maybe make it later so it can be divided by Prefered opencl device multiple
 
-	//check available memory
+									//check available memory
 	long long dev_memory = 0;
 	err = clGetDeviceInfo(device_id, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(long long), &dev_memory, NULL);
 	int dev_mem = static_cast<int>(dev_memory / (1024 * 1024));//MB
