@@ -8,10 +8,9 @@
 #include "Viterbi.h"
 
 using namespace cimg_library;
-using namespace VITERBI;
 
 //image settings
-const char IMG_FILE[] = "line_4.bmp";
+const char IMG_FILE[] = "line_1.bmp";
 const int G_LOW = -2;
 const int G_HIGH = 2;
 
@@ -268,7 +267,7 @@ int main(void)
 	}
 
 	start = clock();
-	viterbiLineDetect(img_out.get(), (unsigned int)img.height(), (unsigned int)img.width(), (unsigned int*)line_x.get(), G_LOW, G_HIGH);
+	viterbiLineDetect(img_out.get(), img.height(), img.width(), line_x, G_LOW, G_HIGH);
 	end = clock();
 	time_ms = (double)(end - start);
 	for (int i = 0; i < img.width(); i++)
@@ -286,7 +285,7 @@ int main(void)
 		line_x[i] = 0;
 	}
 
-	start = clock();
+	/*start = clock();
 	viterbiLineOpenCL_rows(img_out.get(), img.height(), img.width(), &line_x[0], G_LOW, G_HIGH, command_queue, context, device_id);
 	end = clock();
 	time_ms = (double)(end - start);
@@ -297,7 +296,7 @@ int main(void)
 		img(i, (int)line_x[i], 0, 2) = 255;
 	}
 	printf("\nViterbi parallel time , rows version: %f ms\n", time_ms);
-	CImgDisplay rgb2_disp(img, "Image rgb3");
+	CImgDisplay rgb2_disp(img, "Image rgb3");*/
 	while (!rgb1_disp.is_closed());
 	//cleanup
 	int err = 0;
