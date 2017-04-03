@@ -287,7 +287,7 @@ int main(void)
 		img(i, (int)line_x[i], 0, 2) = 0;
 	}
 	printf("\nViterbi serial time: %f ms\n", time_ms);
-	CImgDisplay rgb1_disp(img, "Image rgb2");
+	//CImgDisplay rgb1_disp(img, "Image rgb2");
 
 	//reset line_x 
 	for (uint32_t i = 0; i < img.width(); i++)
@@ -320,7 +320,7 @@ int main(void)
 	}
 	printf("\nViterbi parallel time , rows version: %f ms\n", time_ms);
 	CImgDisplay rgb2_disp(img, "Image rgb3");*/
-	while (!rgb1_disp.is_closed());
+	while (!rgb2_disp.is_closed());
 	//cleanup
 	int err = 0;
 	err = clFlush(command_queue);

@@ -296,16 +296,22 @@ int Viterbi::viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high)
 									//check available memory
 	long long dev_memory = 0;
 	err = clGetDeviceInfo(m_device_id, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(long long), &dev_memory, NULL);
-	int dev_mem = static_cast<int>(dev_memory / (1024 * 1024));//MB
-	int tot_mem = static_cast<int>(((img_size * global_size * sizeof(float)) +
+	cl_ulong max_alloc = 0;
+	err = clGetDeviceInfo(m_device_id, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(long long), &max_alloc, NULL);
+	int dev_mem = static_cast<int>(double(dev_memory) / double(1024 * 1024));//MB
+	int max_buff_size = static_cast<int>(double(max_alloc) / double(1024 * 1024));
+	int tot_mem = static_cast<int>(double((img_size * global_size * sizeof(float)) +
 		(2 * m_img_height * m_img_width * sizeof(float)) +
-		(2 * m_img_width * sizeof(int)) + (img_size * sizeof(unsigned char))) / (1024 * 1024));
+		(2 * m_img_width * sizeof(int)) + (img_size * sizeof(unsigned char))) / double(1024 * 1024));
+	printf("\nMax buffer size: %d MB\n", max_buff_size);
+	printf("Total available memory : %d MB\n", dev_mem);
 	printf("\nTotal memory used %d MB\n", tot_mem);
+	printf("L indices matrixes size : %d MB", int(double(img_size * global_size * sizeof(float) / double(1024 * 1024))));
 
 	//handle not enough GPU memory
-	if (dev_mem < tot_mem)
+	if (max_buff_size < tot_mem)
 	{
-		int mem_multiple = (int)(tot_mem / dev_mem);
+		int mem_multiple = (int)(tot_mem / max_buff_size);
 		global_size = m_img_width / (mem_multiple + 1);
 	}
 
@@ -395,6 +401,7 @@ int Viterbi::launchViterbiMultiThread(std::vector<unsigned int>& line_x, int g_l
 					finished = false;
 					break;
 				}
+
 			}
 			if (finished)
 			{
