@@ -9,6 +9,7 @@
 #include <fstream>
 #include <string>
 #include <thread>
+#include <atomic>
 
 using namespace cimg_library;
 
@@ -39,7 +40,7 @@ private:
 	//methods
 	size_t readKernelFile(std::string &source_str, const std::string &fileName);
 	void fixGlobalSize(size_t &global_size, const size_t &local_size);
-	int viterbiMultiThread(std::vector<unsigned int> &line_x, int g_low, int g_high, unsigned int start_col);
+	int viterbiMultiThread(std::vector<unsigned int> &line_x, std::vector<std::atomic<bool> > &status_flags, int g_low, int g_high, uint8_t thread_id, unsigned int start_col);
 	
 	//class memebers
 	const unsigned char *m_img;

@@ -137,14 +137,17 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_high, int g_l
 		data.m_img_num = img_num;
 		data.m_img_size = img.width() * img.height();
 
+		Viterbi viterbi(img, img.width(), img.height(), command_queue, context, device_id);
+
 		while (g_high + abs(g_low) > 0 && g_low <= 0 && g_high >= 0) // maybe redundant but whatever...
 		{
 			std::vector<std::vector<unsigned int> > line_results;
 			std::vector<double> times;
 			std::vector<unsigned int> line_x(img.width(), 0);
+			
 			//viterbi parallel cols gpu version 
 			clock_t start = clock();
-			viterbiLineOpenCL_cols(img_out.get(), img.height(), img.width(), &line_x[0], g_low, g_high, command_queue, context, device_id);
+			viterbi.viterbiLineOpenCL_cols(&line_x[0], g_low, g_high);
 			clock_t end = clock();
 			double time_ms = (double)(end - start);
 
@@ -152,7 +155,7 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_high, int g_l
 			times.push_back(time_ms);
 			//viterbi serial cpu version
 			start = clock();
-			viterbiLineDetect(img_out.get(), img.height(), img.width(), line_x, g_low, g_high);
+			viterbi.viterbiLineDetect(line_x, g_low, g_high);
 			end = clock();
 			time_ms = (double)(end - start);
 
@@ -161,7 +164,7 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_high, int g_l
 
 			start = clock();
 			//viterbi parallel rows gpu version
-			viterbiLineOpenCL_rows(img_out.get(), img.height(), img.width(), &line_x[0], g_low, g_high, command_queue, context, device_id);
+			viterbi.viterbiLineOpenCL_rows(&line_x[0], g_low, g_high);
 			end = clock();
 			time_ms = (double)(end - start);
 
@@ -169,7 +172,13 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_high, int g_l
 			times.push_back(time_ms);
 
 			//... later add cpu opecl version + parallel std thread version +  eventually cpu + gpu combo opencl
+			start = clock();
+			viterbi.launchViterbiMultiThread(line_x, g_low, g_high);
+			end = clock();
+			time_ms = (double)(end - start);
 
+			line_results.push_back(line_x);
+			times.push_back(time_ms);
 			//save data for ploting and tabel representation
 			data.m_g_high = g_high;
 			data.m_g_low = g_low;
@@ -245,9 +254,10 @@ int main(void)
 	memcpy(img_out.get(), gray_img.data(0, 0, 0, 0), img.width() * img.height());
 
 	std::vector<unsigned int> line_x(img.width());
+	Viterbi viterbi(img, img.width(), img.height(), command_queue, context, device_id);
 
 	clock_t start = clock();
-	viterbiLineOpenCL_cols(img_out.get(), img.height(), img.width(), &line_x[0], G_LOW, G_HIGH, command_queue, context, device_id);
+	viterbi.viterbiLineOpenCL_cols(&line_x[0], G_LOW, G_HIGH);
 	clock_t end = clock();
 	double time_ms = (double)(end - start);
 	for (int i = 0; i < img.width(); i++)
@@ -267,7 +277,7 @@ int main(void)
 	}
 
 	start = clock();
-	viterbiLineDetect(img_out.get(), img.height(), img.width(), line_x, G_LOW, G_HIGH);
+	viterbi.viterbiLineDetect(line_x, G_LOW, G_HIGH);
 	end = clock();
 	time_ms = (double)(end - start);
 	for (int i = 0; i < img.width(); i++)
@@ -284,6 +294,19 @@ int main(void)
 	{
 		line_x[i] = 0;
 	}
+
+	start = clock();
+	viterbi.launchViterbiMultiThread(line_x, G_LOW, G_HIGH);
+	end = clock();
+	time_ms = (double)(end - start);
+	for (int i = 0; i < img.width(); i++)
+	{
+		img(i, (int)line_x[i], 0, 0) = 0;
+		img(i, (int)line_x[i], 0, 1) = 0;
+		img(i, (int)line_x[i], 0, 2) = 255;
+	}
+	printf("\nViterbi parallel time , threads CPU version: %f ms\n", time_ms);
+	CImgDisplay rgb2_disp(img, "Image rgb3"); 
 
 	/*start = clock();
 	viterbiLineOpenCL_rows(img_out.get(), img.height(), img.width(), &line_x[0], G_LOW, G_HIGH, command_queue, context, device_id);

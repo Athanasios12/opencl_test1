@@ -1,5 +1,7 @@
 #include "Viterbi.h"
-#include <atomic>
+#include <iostream>
+
+using namespace std;
 
 const uint8_t NUM_OF_THREADS = 8;
 
@@ -362,43 +364,54 @@ int Viterbi::viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high)
 
 int Viterbi::launchViterbiMultiThread(std::vector<unsigned int>& line_x, int g_low, int g_high)
 {
-	uint32_t to_process = m_img_width;
-	uint32_t chunk = to_process / NUM_OF_THREADS;
-
+	uint32_t to_process = m_img_width - 1;
 	uint32_t start_col = 0;
 	std::vector<std::atomic<bool> > status_flags(NUM_OF_THREADS);
-	for (uint8_t i = 0; i < NUM_OF_THREADS; i++)
+	while (to_process > 0)
 	{
-		m_viterbiThreads.push_back(std::thread(line_x, g_low, g_high, start_col));
-		start_col += chunk;
-	}
-
-	while (true)
-	{
-		bool finished = true;
-		for (auto &flag : status_flags)
+		uint8_t launched_threads = 0;
+		for (uint8_t i = 0; i < NUM_OF_THREADS; i++)
 		{
-			if (!flag)
+			if (start_col < m_img_width - 1)
 			{
-				finished = false;
+				m_viterbiThreads.push_back(std::thread(&Viterbi::viterbiMultiThread, this, std::ref(line_x), std::ref(status_flags), g_low, g_high, launched_threads, start_col));
+				status_flags[launched_threads] = false;
+				++start_col;
+				++launched_threads;
+				--to_process;
+			}
+			else
+			{
 				break;
 			}
 		}
-		if (finished)
+		while (true)
 		{
-			for (uint8_t i = 0; i < NUM_OF_THREADS; i++)
+			bool finished = true;
+			for (uint32_t i = 0; i < launched_threads; i++)
 			{
-				m_viterbiThreads[i].join();
+				if (!status_flags[i])
+				{
+					finished = false;
+					break;
+				}
 			}
-			break;
+			if (finished)
+			{
+				for (uint8_t i = 0; i < launched_threads; i++)
+				{
+					m_viterbiThreads[i].join();
+				}
+				break;
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(2));
 		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		m_viterbiThreads.clear();
 	}
-	m_viterbiThreads.clear();
-	
+	return 0;
 }
 
-int Viterbi::viterbiMultiThread(std::vector<unsigned int>& line_x, int g_low, int g_high, unsigned int start_col)
+int Viterbi::viterbiMultiThread(std::vector<unsigned int>& line_x, std::vector<std::atomic<bool> > &status_flags, int g_low, int g_high, uint8_t thread_id, unsigned int start_col)
 {
 	if (m_img == 0 && m_img_height > 0 && m_img_width > 0 && start_col < m_img_width)
 	{
@@ -462,5 +475,6 @@ int Viterbi::viterbiMultiThread(std::vector<unsigned int>& line_x, int g_low, in
 	}
 	// save only last pixel position
 	line_x[start_col] = x_cord[start_col];
+	status_flags[thread_id] = true;
 	return 0;
 }
