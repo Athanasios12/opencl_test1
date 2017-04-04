@@ -1,5 +1,6 @@
 #include "Viterbi.h"
 #include <iostream>
+#include <mutex>
 
 using namespace std;
 
@@ -418,8 +419,10 @@ int Viterbi::launchViterbiMultiThread(std::vector<unsigned int>& line_x, int g_l
 	return 0;
 }
 
+
 int Viterbi::viterbiMultiThread(std::vector<unsigned int>& line_x, std::vector<std::atomic<bool> > &status_flags, int g_low, int g_high, uint8_t thread_id, unsigned int start_col)
 {
+	//std::lock_guard<std::mutex> guard(viterbi_mutex);
 	if (m_img == 0 && m_img_height > 0 && m_img_width > 0 && start_col < m_img_width)
 	{
 		return 1;

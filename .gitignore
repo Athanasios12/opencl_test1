@@ -244,6 +244,9 @@ FakesAssemblies/
 *.png
 *.jpg
 
+#csv
+*.csv
+
 # Visual Studio 6 workspace options file
 *.opt
 
