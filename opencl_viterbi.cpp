@@ -7,6 +7,8 @@
 #include <vector>
 #include "Viterbi.h"
 #include <iostream>
+#include <numeric>
+#include <algorithm>
 
 using namespace cimg_library;
 using namespace std;
@@ -100,6 +102,7 @@ typedef struct
 	int m_g_high;
 	std::vector<double> m_exec_time;
 	std::vector<std::vector<unsigned int> > m_lines_pos;
+	uint32_t m_detectionError;
 }PlotData;
 
 typedef struct
@@ -118,8 +121,42 @@ void displayTrackedLine(CImg<unsigned char> &img, const std::vector<unsigned int
 	}
 }
 
+bool readTestLine(const std::string &fileName, std::vector<uint32_t> &test_line)
+{
+	std::ifstream test_file(fileName);
+	std::string line;
+	if (test_file.is_open())
+	{
+		test_line.clear();
+		while (std::getline(test_file, line))
+		{
+			test_line.push_back(static_cast<uint32_t>(std::stoi(line)));
+		}
+		test_file.close();
+	}
+	else
+	{
+		return false;
+	}
+	
+	return true;
+}
+
+uint32_t checkDetectionError(const std::vector<unsigned int> &line, const std::vector<uint32_t> &test_line)
+{
+	uint32_t error = 0;
+	if (line.size() == test_line.size())
+	{
+		for (uint32_t i = 0; i < test_line.size(); i++)
+		{
+			error += uint32_t(abs(int(test_line[i]) - int(line[i])));
+		}
+	}
+	return error;
+}
+
 //maybe later add returning error codes
-void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, int g_incr, PlotInfo &plotInfo)
+void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, int g_incr, PlotInfo &plotInfo, const std::vector<uint32_t> &test_line)
 {
 	if (g_h <= g_l || g_h < 0 || g_l > 0)
 	{
@@ -158,13 +195,14 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 			std::vector<std::vector<unsigned int> > line_results;
 			std::vector<double> times;
 			std::vector<unsigned int> line_x(img.width(), 0);
+			std::vector<uint32_t> detectionError;
 			
 			//viterbi parallel cols gpu version 
 			clock_t start = clock();
 			viterbi.viterbiLineOpenCL_cols(&line_x[0], g_low, g_high);
 			clock_t end = clock();
 			double time_ms = (double)(end - start);
-			displayTrackedLine(img, line_x, n);
+			detectionError.push_back(checkDetectionError(line_x, test_line));
 			line_results.push_back(line_x);
 			times.push_back(time_ms);
 			//viterbi serial cpu version
@@ -172,10 +210,12 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 			viterbi.viterbiLineDetect(line_x, g_low, g_high);
 			end = clock();
 			time_ms = (double)(end - start);
-			displayTrackedLine(img, line_x, n);
+			//check line detection error based on desired cordinates from line_test.py script, save it in another column
+			detectionError.push_back(checkDetectionError(line_x, test_line));
 			line_results.push_back(line_x);
 			times.push_back(time_ms);
 
+			//gpu rows version
 			//start = clock();
 			////viterbi parallel rows gpu version
 			//viterbi.viterbiLineOpenCL_rows(&line_x[0], g_low, g_high);
@@ -185,13 +225,12 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 			//line_results.push_back(line_x);
 			//times.push_back(time_ms);
 
-			//... later add cpu opecl version + parallel std thread version +  eventually cpu + gpu combo opencl
+			//cpu multithread version
 			start = clock();
 			viterbi.launchViterbiMultiThread(line_x, g_low, g_high);
 			end = clock();
 			time_ms = (double)(end - start);
-
-			displayTrackedLine(img, line_x, n);
+			detectionError.push_back(checkDetectionError(line_x, test_line));
 			line_results.push_back(line_x);
 			times.push_back(time_ms);
 			//save data for ploting and tabel representation
@@ -199,14 +238,18 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 			data.m_g_low = g_low;
 			data.m_exec_time = times;
 			data.m_lines_pos = line_results;
+			uint32_t avg_err = std::accumulate(detectionError.begin(), detectionError.end(), 0) / detectionError.size();
+			for (auto && error : detectionError)
+			{
+				cout << "\nError : " << error;
+			}
+			data.m_detectionError = avg_err;
 			//save plot data in plot info data vector
 			plotInfo.m_pData.push_back(data);
 			//next g_l/h combo
+			displayTrackedLine(img, line_x, n);
 			g_low += g_incr;
 			g_high -= g_incr;
-			//here maybe necessery to add line
-			//err = clFlush(command_queue); for cleaning command queue, maybe even earlier with next opencl call
-			//between viterbi cols and rows function calls
 			++n;
 		}
 		++img_num;
@@ -240,7 +283,7 @@ void generateCsv(const std::string &file, const PlotInfo &pInfo, const std::vect
 	data_file << "\n";
 	for (auto && data : pInfo.m_pData)
 	{
-		data_file << data.m_img_num << "," << data.m_img_size << "," << data.m_g_low << "," << data.m_g_high;
+		data_file << data.m_img_num << "," << data.m_img_size << "," << data.m_g_low << "," << data.m_g_high << "," << data.m_detectionError;
 		for (auto && time : data.m_exec_time)
 		{
 			data_file << "," << time;
@@ -350,11 +393,22 @@ int main(void)
 	//basic tests, later call test viterbi
 	PlotInfo pInfo;
 	//declare list of images - maybe load from file later
-	std::vector<std::string> images{"line_1.bmp", "line_2.bmp"};
+	std::vector<std::string> images{"line_error_test_0.bmp"};
 
 	//basicTest();
-	test_viterbi(images, 5, -5, 1, pInfo);
-	std::vector<std::string> columns{ "img_num", "img_size", "g_low", "g_high", "GPU", "SERIAL", "CPU_THREADS" };
-	generateCsv("test_results.csv", pInfo, columns);
+	std::vector<uint32_t> test_line;
+	if (readTestLine("line_pos.csv", test_line))
+	{
+		test_viterbi(images, 5, -5, 1, pInfo, test_line); // init g_low, g_high = <-5, 5>
+		//check inside the test viterbi function if errors are indeed the same, if not something is not right, because algorithms results should be indentical
+		//error should be the same for all algorithms, only time should be different
+		std::vector<std::string> columns{ "img_num", "img_size", "g_low", "g_high", "error", "GPU", "SERIAL", "CPU_THREADS" };											
+		generateCsv("test_results.csv", pInfo, columns);
+	}
+	else
+	{
+		cout << "Failed reading test line file" << endl;
+	}
+
 	return 0;
 }

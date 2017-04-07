@@ -189,6 +189,8 @@ int Viterbi::viterbiLineDetect(std::vector<unsigned int> &line_x, int g_low, int
 	//allocate array for viterbi algorithm
 	std::vector<int> L(m_img_height * m_img_width, 0);
 	std::vector<uint32_t> V(m_img_height * m_img_width, 0);
+	std::vector<uint32_t> V_old(m_img_height, 0);
+	std::vector<uint32_t> V_new;
 
 	uint32_t P_max = 0;
 	uint32_t x_max = 0;
@@ -202,10 +204,11 @@ int Viterbi::viterbiLineDetect(std::vector<unsigned int> &line_x, int g_low, int
 		for (size_t m = 0; m < m_img_height; m++)
 		{
 			V[(m * m_img_width) + i] = 0;
+			V_old[m] = 0;
 		}
-		for (size_t n = i; n < (m_img_width - 1); n++)
+		for (int n = i; n < (m_img_width - 1); n++)
 		{
-			for (size_t j = 0; j < m_img_height; j++)
+			for (int j = 0; j < m_img_height; j++)
 			{
 				max_val = 0;
 				for (int g = g_low; g <= g_high; g++)
@@ -220,21 +223,22 @@ int Viterbi::viterbiLineDetect(std::vector<unsigned int> &line_x, int g_low, int
 					}
 					int curr_id = j + g;
 					pixel_value = m_img[((curr_id)* m_img_width) + n];
-					if ((pixel_value + V[(m_img_width * curr_id) + n]) > max_val)
+					if ((pixel_value + V_old[curr_id]) > max_val)
 					{
-						max_val = pixel_value + V[(m_img_width * curr_id) + n];
+						max_val = pixel_value + V_old[curr_id];
 						L[(j * m_img_width) + n] = g;
 					}
 				}
-				V[(j * m_img_width) + (n + 1)] = max_val;
+				V_new.push_back(max_val);
 			}
+			V_old = std::move(V_new);
 		}
 		//find biggest cost value in last column
 		for (size_t j = 0; j < m_img_height; j++)
 		{
-			if (V[(j * m_img_width) + (m_img_width - 1)] > P_max)
+			if (V_old[j] > P_max)
 			{
-				P_max = V[(j * m_img_width) + (m_img_width - 1)];
+				P_max = V[j];
 				x_max = j;
 			}
 		}
@@ -441,7 +445,7 @@ int Viterbi::viterbiMultiThread(std::vector<unsigned int>& line_x, std::vector<s
 	}
 	for (size_t n = start_col; n < (m_img_width - 1); n++)
 	{
-		for (size_t j = 0; j < m_img_height; j++)
+		for (int j = 0; j < m_img_height; j++)
 		{
 			max_val = 0;
 			for (int g = g_low; g <= g_high; g++)
