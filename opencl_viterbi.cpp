@@ -15,8 +15,8 @@ using namespace std;
 
 //image settings
 const char IMG_FILE[] = "line_2.bmp";
-const int G_LOW = -2;
-const int G_HIGH = 2;
+const int G_LOW = -1;
+const int G_HIGH = 1;
 
 void rgb2Gray(const CImg<unsigned char> &img, CImg<unsigned char> &grayImg)
 {
@@ -365,7 +365,7 @@ void basicTest()
 	}
 	printf("\nViterbi parallel time , threads CPU version: %f ms\n", time_ms);
 	CImgDisplay rgb2_disp(img, "Image rgb3");
-	img.save_bmp("threds2.bmp");
+	img.save_bmp("threds1.bmp");
 
 	/*start = clock();
 	viterbiLineOpenCL_rows(img_out.get(), img.height(), img.width(), &line_x[0], G_LOW, G_HIGH, command_queue, context, device_id);

@@ -187,10 +187,8 @@ int Viterbi::viterbiLineDetect(std::vector<unsigned int> &line_x, int g_low, int
 		return 1;
 	}
 	//allocate array for viterbi algorithm
-	std::vector<int> L(m_img_height * m_img_width, 0);
+	std::vector<uint32_t> L(m_img_height * m_img_width, 0);
 	std::vector<uint32_t> V(m_img_height * m_img_width, 0);
-	std::vector<uint32_t> V_old(m_img_height, 0);
-	std::vector<uint32_t> V_new;
 
 	uint32_t P_max = 0;
 	uint32_t x_max = 0;
@@ -204,9 +202,8 @@ int Viterbi::viterbiLineDetect(std::vector<unsigned int> &line_x, int g_low, int
 		for (size_t m = 0; m < m_img_height; m++)
 		{
 			V[(m * m_img_width) + i] = 0;
-			V_old[m] = 0;
 		}
-		for (int n = i; n < (m_img_width - 1); n++)
+		for (size_t n = i; n < (m_img_width - 1); n++)
 		{
 			for (int j = 0; j < m_img_height; j++)
 			{
@@ -223,22 +220,21 @@ int Viterbi::viterbiLineDetect(std::vector<unsigned int> &line_x, int g_low, int
 					}
 					int curr_id = j + g;
 					pixel_value = m_img[((curr_id)* m_img_width) + n];
-					if ((pixel_value + V_old[curr_id]) > max_val)
+					if ((pixel_value + V[(m_img_width * curr_id) + n]) > max_val)
 					{
-						max_val = pixel_value + V_old[curr_id];
+						max_val = pixel_value + V[(m_img_width * curr_id) + n];
 						L[(j * m_img_width) + n] = g;
 					}
 				}
-				V_new.push_back(max_val);
+				V[(j * m_img_width) + (n + 1)] = max_val;
 			}
-			V_old = std::move(V_new);
 		}
 		//find biggest cost value in last column
 		for (size_t j = 0; j < m_img_height; j++)
 		{
-			if (V_old[j] > P_max)
+			if (V[(j * m_img_width) + (m_img_width - 1)] > P_max)
 			{
-				P_max = V[j];
+				P_max = V[(j * m_img_width) + (m_img_width - 1)];
 				x_max = j;
 			}
 		}
@@ -377,7 +373,6 @@ int Viterbi::launchViterbiMultiThread(std::vector<unsigned int>& line_x, int g_l
 {
 	uint32_t to_process = m_img_width - 1;
 	uint32_t start_col = 0;
-	std::vector<std::atomic<bool> > status_flags(NUM_OF_THREADS);
 	while (to_process > 0)
 	{
 		uint8_t launched_threads = 0;
@@ -385,8 +380,7 @@ int Viterbi::launchViterbiMultiThread(std::vector<unsigned int>& line_x, int g_l
 		{
 			if (start_col < m_img_width - 1)
 			{
-				m_viterbiThreads.push_back(std::thread(&Viterbi::viterbiMultiThread, this, std::ref(line_x), std::ref(status_flags), g_low, g_high, launched_threads, start_col));
-				status_flags[launched_threads] = false;
+				m_viterbiThreads.push_back(std::thread(&Viterbi::viterbiMultiThread, this, std::ref(line_x), g_low, g_high, launched_threads, start_col));
 				++start_col;
 				++launched_threads;
 				--to_process;
@@ -396,35 +390,19 @@ int Viterbi::launchViterbiMultiThread(std::vector<unsigned int>& line_x, int g_l
 				break;
 			}
 		}
-		while (true)
-		{
-			bool finished = true;
-			for (uint32_t i = 0; i < launched_threads; i++)
-			{
-				if (!status_flags[i])
-				{
-					finished = false;
-					break;
-				}
 
-			}
-			if (finished)
-			{
-				for (uint8_t i = 0; i < launched_threads; i++)
-				{
-					m_viterbiThreads[i].join();
-				}
-				break;
-			}
-			std::this_thread::sleep_for(std::chrono::milliseconds(2));
+		for (uint8_t i = 0; i < launched_threads; i++)
+		{
+			m_viterbiThreads[i].join();
 		}
 		m_viterbiThreads.clear();
 	}
+	line_x[m_img_width - 1] = line_x[m_img_width - 2];
 	return 0;
 }
 
 
-int Viterbi::viterbiMultiThread(std::vector<unsigned int>& line_x, std::vector<std::atomic<bool> > &status_flags, int g_low, int g_high, uint8_t thread_id, unsigned int start_col)
+int Viterbi::viterbiMultiThread(std::vector<unsigned int>& line_x, int g_low, int g_high, uint8_t thread_id, unsigned int start_col)
 {
 	//std::lock_guard<std::mutex> guard(viterbi_mutex);
 	if (m_img == 0 && m_img_height > 0 && m_img_width > 0 && start_col < m_img_width)
@@ -489,6 +467,5 @@ int Viterbi::viterbiMultiThread(std::vector<unsigned int>& line_x, std::vector<s
 	}
 	// save only last pixel position
 	line_x[start_col] = x_cord[start_col];
-	status_flags[thread_id] = true;
 	return 0;
 }
