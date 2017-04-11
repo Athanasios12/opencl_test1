@@ -395,7 +395,7 @@ int main(void)
 	//declare list of images - maybe load from file later
 	std::vector<std::string> images{"line_error_test_0.bmp"};
 
-	//basicTest();
+	basicTest();
 	std::vector<uint32_t> test_line;
 	if (readTestLine("line_pos.csv", test_line))
 	{
