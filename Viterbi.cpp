@@ -257,6 +257,7 @@ int Viterbi::viterbiLineDetect(std::vector<unsigned int> &line_x, int g_low, int
 int Viterbi::viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high)
 {
 	int err = 0;
+	//----------initalization, do it in contsructor - needs to be executed only once
 	std::string source_str;
 	size_t img_size = (m_img_height * m_img_width);
 	// Load the source code containing the kernel*/
@@ -291,7 +292,7 @@ int Viterbi::viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high)
 	}
 	// Create OpenCL Kernel */
 	cl_kernel viterbi_forward = clCreateKernel(program, VITERBI_COLS_FUNCTION, &err);
-
+	//----------initalization, do it in contsructor - needs to be executed only once
 	size_t global_size = m_img_width; // maybe make it later so it can be divided by Prefered opencl device multiple
 
 									//check available memory
@@ -375,7 +376,7 @@ int Viterbi::launchViterbiMultiThread(std::vector<unsigned int>& line_x, int g_l
 	uint32_t start_col = 0;
 	uint32_t idx = 0;
 	std::vector<unsigned int> line(NUM_OF_THREADS);
-	std::vector<std::future<unsigned int> > viterbiThreads;
+	std::vector<std::future<unsigned int> > viterbiThreads(NUM_OF_THREADS);
 	while (to_process > 0)
 	{
 		uint8_t launched_threads = 0;
@@ -383,7 +384,7 @@ int Viterbi::launchViterbiMultiThread(std::vector<unsigned int>& line_x, int g_l
 		{
 			if (start_col < m_img_width - 1)
 			{
-				viterbiThreads.push_back(std::async(launch::async, &Viterbi::viterbiMultiThread, this, g_low, g_high, start_col));
+				viterbiThreads[i] = (std::async(launch::async, &Viterbi::viterbiMultiThread, this, g_low, g_high, start_col));
 				++start_col;
 				++launched_threads;
 				--to_process;
@@ -399,7 +400,6 @@ int Viterbi::launchViterbiMultiThread(std::vector<unsigned int>& line_x, int g_l
 			line_x[idx] = viterbiThreads[i].get();
 			++idx;
 		}
-		viterbiThreads.clear();
 	}
 	line_x[m_img_width - 1] = line_x[m_img_width - 2];
 	return 0;

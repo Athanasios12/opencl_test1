@@ -9,14 +9,15 @@
 #include <iostream>
 #include <numeric>
 #include <algorithm>
+#include <stdlib.h>
 
 using namespace cimg_library;
 using namespace std;
 
 //image settings
-const char IMG_FILE[] = "line_2.bmp";
-const int G_LOW = -1;
-const int G_HIGH = 1;
+const char IMG_FILE[] = "line_4.bmp";
+const int G_LOW = -8;
+const int G_HIGH = 8;
 
 void rgb2Gray(const CImg<unsigned char> &img, CImg<unsigned char> &grayImg)
 {
@@ -156,7 +157,7 @@ uint32_t checkDetectionError(const std::vector<unsigned int> &line, const std::v
 }
 
 //maybe later add returning error codes
-void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, int g_incr, PlotInfo &plotInfo, const std::vector<uint32_t> &test_line)
+void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, int g_incr, PlotInfo &plotInfo, const std::vector<std::vector<uint32_t> > &test_lines)
 {
 	if (g_h <= g_l || g_h < 0 || g_l > 0)
 	{
@@ -202,7 +203,7 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 			viterbi.viterbiLineOpenCL_cols(&line_x[0], g_low, g_high);
 			clock_t end = clock();
 			double time_ms = (double)(end - start);
-			detectionError.push_back(checkDetectionError(line_x, test_line));
+			detectionError.push_back(checkDetectionError(line_x, test_lines[img_num]));
 			line_results.push_back(line_x);
 			times.push_back(time_ms);
 			//viterbi serial cpu version
@@ -211,7 +212,7 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 			end = clock();
 			time_ms = (double)(end - start);
 			//check line detection error based on desired cordinates from line_test.py script, save it in another column
-			detectionError.push_back(checkDetectionError(line_x, test_line));
+			detectionError.push_back(checkDetectionError(line_x, test_lines[img_num]));
 			line_results.push_back(line_x);
 			times.push_back(time_ms);
 
@@ -230,7 +231,7 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 			viterbi.launchViterbiMultiThread(line_x, g_low, g_high);
 			end = clock();
 			time_ms = (double)(end - start);
-			detectionError.push_back(checkDetectionError(line_x, test_line));
+			detectionError.push_back(checkDetectionError(line_x, test_lines[img_num]));
 			line_results.push_back(line_x);
 			times.push_back(time_ms);
 			//save data for ploting and tabel representation
@@ -301,7 +302,7 @@ void basicTest()
 	if (CL_SUCCESS != initializeCL(command_queue, context, device_id))
 	{
 		printf("\nFailed OpenCl initialization!\n");
-		return;
+return;
 	}
 	CImg<unsigned char> img(IMG_FILE);
 	CImg<unsigned char> gray_img(img.width(), img.height(), 1, 1, 0);
@@ -393,13 +394,23 @@ int main(void)
 	//basic tests, later call test viterbi
 	PlotInfo pInfo;
 	//declare list of images - maybe load from file later
-	std::vector<std::string> images{"line_error_test_0.bmp"};
+	std::vector<std::string> images{ "line_error_test_0.bmp", "line_error_test_1.bmp" , "line_error_test_2.bmp" };
 
-	basicTest();
+	//basicTest();
+	std::vector<std::vector<uint32_t> > test_lines;
 	std::vector<uint32_t> test_line;
-	if (readTestLine("line_pos.csv", test_line))
+	char buff[100];
+	bool success = true;
+	for (uint32_t i = 0; i < images.size(); i++)
 	{
-		test_viterbi(images, 5, -5, 1, pInfo, test_line); // init g_low, g_high = <-5, 5>
+		_itoa_s(i, buff, 10);
+		std::string file_name = "line_pos_" + std::string(buff) + ".txt";
+		success = readTestLine(file_name, test_line);
+		test_lines.push_back(test_line);
+	}
+	if (success)
+	{
+		test_viterbi(images, G_HIGH, G_LOW, 1, pInfo, test_lines); // init g_low, g_high = <-5, 5>
 		//check inside the test viterbi function if errors are indeed the same, if not something is not right, because algorithms results should be indentical
 		//error should be the same for all algorithms, only time should be different
 		std::vector<std::string> columns{ "img_num", "img_size", "g_low", "g_high", "error", "GPU", "SERIAL", "CPU_THREADS" };											

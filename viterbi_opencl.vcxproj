@@ -132,7 +132,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="CImg.h" />
-    <ClInclude Include="test_opencl.h" />
     <ClInclude Include="Viterbi.h" />
   </ItemGroup>
   <ItemGroup>
