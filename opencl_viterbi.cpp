@@ -15,7 +15,7 @@ using namespace cimg_library;
 using namespace std;
 
 //image settings
-const char IMG_FILE[] = "line_4.bmp";
+const char IMG_FILE[] = "line_error_test_2.bmp";
 const int G_LOW = -8;
 const int G_HIGH = 8;
 
@@ -153,6 +153,10 @@ uint32_t checkDetectionError(const std::vector<unsigned int> &line, const std::v
 			error += uint32_t(abs(int(test_line[i]) - int(line[i])));
 		}
 	}
+	if (error == 0)
+	{
+		cout << " ";
+	}
 	return error;
 }
 
@@ -172,6 +176,7 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 		printf("\nFailed OpenCl initialization!\n");
 		return;
 	}
+	Viterbi viterbi(command_queue, context, device_id);
 	uint32_t img_num = 0;
 	for (auto && img_file : img_files)
 	{
@@ -187,7 +192,7 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 		data.m_img_num = img_num;
 		data.m_img_size = double(img.width() * img.height()) / double(1024 * 1024);
 
-		Viterbi viterbi(gray_img, img.width(), img.height(), command_queue, context, device_id);
+		viterbi.setImg(gray_img, img.height(), img.width());
 		uint8_t n = 0;
 		int g_low = g_l;
 		int g_high = g_h;
@@ -197,7 +202,7 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 			std::vector<double> times;
 			std::vector<unsigned int> line_x(img.width(), 0);
 			std::vector<uint32_t> detectionError;
-			
+
 			//viterbi parallel cols gpu version 
 			clock_t start = clock();
 			viterbi.viterbiLineOpenCL_cols(&line_x[0], g_low, g_high);
@@ -206,6 +211,7 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 			detectionError.push_back(checkDetectionError(line_x, test_lines[img_num]));
 			line_results.push_back(line_x);
 			times.push_back(time_ms);
+			cout << "\nGPU time :" << time_ms << endl;
 			//viterbi serial cpu version
 			start = clock();
 			viterbi.viterbiLineDetect(line_x, g_low, g_high);
@@ -215,16 +221,18 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 			detectionError.push_back(checkDetectionError(line_x, test_lines[img_num]));
 			line_results.push_back(line_x);
 			times.push_back(time_ms);
+			cout << "\nSerial time :" << time_ms << endl;
+			/*
+			gpu rows version
+			start = clock();
+			//viterbi parallel rows gpu version
+			viterbi.viterbiLineOpenCL_rows(&line_x[0], g_low, g_high);
+			end = clock();
+			time_ms = (double)(end - start);
 
-			//gpu rows version
-			//start = clock();
-			////viterbi parallel rows gpu version
-			//viterbi.viterbiLineOpenCL_rows(&line_x[0], g_low, g_high);
-			//end = clock();
-			//time_ms = (double)(end - start);
-
-			//line_results.push_back(line_x);
-			//times.push_back(time_ms);
+			line_results.push_back(line_x);
+			times.push_back(time_ms);
+			*/
 
 			//cpu multithread version
 			start = clock();
@@ -234,6 +242,7 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 			detectionError.push_back(checkDetectionError(line_x, test_lines[img_num]));
 			line_results.push_back(line_x);
 			times.push_back(time_ms);
+			cout << "\nThreads time :" << time_ms << endl;
 			//save data for ploting and tabel representation
 			data.m_g_high = g_high;
 			data.m_g_low = g_low;
@@ -258,7 +267,7 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 	}
 	//cleanup
 	int err = 0;
-	err = clFlush(command_queue); // maybe put it inside the loop ?
+	err = clFlush(command_queue); 
 	err = clFinish(command_queue);
 	err = clReleaseCommandQueue(command_queue);
 	err = clReleaseContext(context);
@@ -313,8 +322,8 @@ return;
 	memcpy(img_out.get(), gray_img.data(0, 0, 0, 0), img.width() * img.height());
 
 	std::vector<unsigned int> line_x(img.width());
-	Viterbi viterbi(gray_img, img.width(), img.height(), command_queue, context, device_id);
-
+	Viterbi viterbi(command_queue, context, device_id);
+	viterbi.setImg(gray_img, img.height(), img.width());
 	clock_t start = clock();
 	viterbi.viterbiLineOpenCL_cols(&line_x[0], G_LOW, G_HIGH);
 	clock_t end = clock();

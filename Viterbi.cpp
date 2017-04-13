@@ -6,22 +6,64 @@ using namespace std;
 
 const uint8_t NUM_OF_THREADS = 8;
 
-Viterbi::Viterbi(const unsigned char * img, size_t img_width, size_t img_height, const cl_command_queue & command_queue, const cl_context & context, cl_device_id device_id):
-	m_img(img),
-	m_img_width(img_width),
-	m_img_height(img_height),
+Viterbi::Viterbi(const cl_command_queue & command_queue, const cl_context & context, cl_device_id device_id):
+	m_img(NULL),
 	m_command_queue(command_queue),
 	m_context(context),
 	m_device_id(device_id)
 { 
-
+	m_initalized = loadAndBuildKernel();
 }
 
 Viterbi::~Viterbi()
 {
-
+	if (m_initalized)
+	{
+		clReleaseKernel(m_viterbiKernel);
+		clReleaseProgram(m_program);
+	}
 }
 
+bool Viterbi::loadAndBuildKernel()
+{
+	int err = 0;
+	//----------initalization, do it in contsructor - needs to be executed only once
+	std::string source_str;
+	// Load the source code containing the kernel*/
+	size_t source_size = readKernelFile(source_str, VITERBI_KERNEL_FILE);
+	if (source_size == 0)
+	{
+		return 1;
+	}
+	char *source_str_ptr = &source_str[0];
+	 m_program = clCreateProgramWithSource(m_context, 1, (const char **)&source_str_ptr,
+		(const size_t *)&source_size, &err);
+	if (CL_SUCCESS != err)
+	{
+		return err;
+	}
+	// Build Kernel Program */
+	err = clBuildProgram(m_program, 1, &m_device_id, NULL, NULL, NULL);
+	if (err == CL_BUILD_PROGRAM_FAILURE) {
+		// Determine the size of the log
+		size_t log_size;
+		clGetProgramBuildInfo(m_program, m_device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+
+		// Allocate memory for the log
+		char *log = (char *)malloc(log_size);
+
+		// Get the log
+		clGetProgramBuildInfo(m_program, m_device_id, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
+
+		// Print the log
+		printf("%s\n", log);
+		free(log);
+	}
+	// Create OpenCL Kernel */
+	m_viterbiKernel = clCreateKernel(m_program, VITERBI_COLS_FUNCTION, &err);
+	//----------initalization, do it in contsructor - needs to be executed only once
+	return err == CL_SUCCESS;
+}
 
 
 size_t Viterbi::readKernelFile(std::string &source_str, const std::string &fileName)
@@ -56,8 +98,7 @@ void Viterbi::fixGlobalSize(size_t &global_size, const size_t &local_size)
 	}
 }
 
-
-
+//obsolete , needs fixing, maybe later
 int Viterbi::viterbiLineOpenCL_rows(unsigned int *line_x, int g_low, int g_high)
 {
 	//read kernel file
@@ -257,42 +298,12 @@ int Viterbi::viterbiLineDetect(std::vector<unsigned int> &line_x, int g_low, int
 int Viterbi::viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high)
 {
 	int err = 0;
-	//----------initalization, do it in contsructor - needs to be executed only once
-	std::string source_str;
+	if (!m_initalized || m_img == NULL)
+	{
+		cout << "Kernel not initialized" << endl;
+		return CL_FALSE;
+	}
 	size_t img_size = (m_img_height * m_img_width);
-	// Load the source code containing the kernel*/
-	size_t source_size = readKernelFile(source_str, VITERBI_KERNEL_FILE);
-	if (source_size == 0)
-	{
-		return 1;
-	}
-	char *source_str_ptr = &source_str[0];
-	cl_program program = clCreateProgramWithSource(m_context, 1, (const char **)&source_str_ptr,
-		(const size_t *)&source_size, &err);
-	if (CL_SUCCESS != err)
-	{
-		return err;
-	}
-	// Build Kernel Program */
-	err = clBuildProgram(program, 1, &m_device_id, NULL, NULL, NULL);
-	if (err == CL_BUILD_PROGRAM_FAILURE) {
-		// Determine the size of the log
-		size_t log_size;
-		clGetProgramBuildInfo(program, m_device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
-
-		// Allocate memory for the log
-		char *log = (char *)malloc(log_size);
-
-		// Get the log
-		clGetProgramBuildInfo(program, m_device_id, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
-
-		// Print the log
-		printf("%s\n", log);
-		free(log);
-	}
-	// Create OpenCL Kernel */
-	cl_kernel viterbi_forward = clCreateKernel(program, VITERBI_COLS_FUNCTION, &err);
-	//----------initalization, do it in contsructor - needs to be executed only once
 	size_t global_size = m_img_width; // maybe make it later so it can be divided by Prefered opencl device multiple
 
 									//check available memory
@@ -305,11 +316,13 @@ int Viterbi::viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high)
 	int tot_mem = static_cast<int>(double((img_size * global_size * sizeof(float)) +
 		(2 * m_img_height * m_img_width * sizeof(float)) +
 		(2 * m_img_width * sizeof(int)) + (img_size * sizeof(unsigned char))) / double(1024 * 1024));
+	//later delete prints for speed
+#ifdef _DEBUG
 	printf("\nMax buffer size: %d MB\n", max_buff_size);
 	printf("Total available memory : %d MB\n", dev_mem);
 	printf("\nTotal memory used %d MB\n", tot_mem);
 	printf("L indices matrixes size : %d MB", int(double(img_size * global_size * sizeof(float) / double(1024 * 1024))));
-
+#endif
 	//handle not enough GPU memory
 	if (max_buff_size < tot_mem)
 	{
@@ -328,16 +341,16 @@ int Viterbi::viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high)
 	cl_mem cmL = clCreateBuffer(m_context, CL_MEM_READ_WRITE, img_size * global_size * sizeof(float), NULL, &err);
 
 	//set kernel arguments
-	err = clSetKernelArg(viterbi_forward, 0, sizeof(cl_mem), (void*)&cmImg);
-	err |= clSetKernelArg(viterbi_forward, 1, sizeof(cl_mem), (void*)&cmL);
-	err |= clSetKernelArg(viterbi_forward, 2, sizeof(cl_mem), (void*)&cmLine_x);
-	err |= clSetKernelArg(viterbi_forward, 3, sizeof(cl_mem), (void*)&cmV1);
-	err |= clSetKernelArg(viterbi_forward, 4, sizeof(cl_mem), (void*)&cmV2);
-	err |= clSetKernelArg(viterbi_forward, 5, sizeof(cl_mem), (void*)&cmX_cord);
-	err |= clSetKernelArg(viterbi_forward, 6, sizeof(cl_int), (void*)&m_img_height);
-	err |= clSetKernelArg(viterbi_forward, 7, sizeof(cl_int), (void*)&m_img_width);
-	err |= clSetKernelArg(viterbi_forward, 8, sizeof(cl_int), (void*)&g_high);
-	err |= clSetKernelArg(viterbi_forward, 9, sizeof(cl_int), (void*)&g_low);
+	err = clSetKernelArg(m_viterbiKernel, 0, sizeof(cl_mem), (void*)&cmImg);
+	err |= clSetKernelArg(m_viterbiKernel, 1, sizeof(cl_mem), (void*)&cmL);
+	err |= clSetKernelArg(m_viterbiKernel, 2, sizeof(cl_mem), (void*)&cmLine_x);
+	err |= clSetKernelArg(m_viterbiKernel, 3, sizeof(cl_mem), (void*)&cmV1);
+	err |= clSetKernelArg(m_viterbiKernel, 4, sizeof(cl_mem), (void*)&cmV2);
+	err |= clSetKernelArg(m_viterbiKernel, 5, sizeof(cl_mem), (void*)&cmX_cord);
+	err |= clSetKernelArg(m_viterbiKernel, 6, sizeof(cl_int), (void*)&m_img_height);
+	err |= clSetKernelArg(m_viterbiKernel, 7, sizeof(cl_int), (void*)&m_img_width);
+	err |= clSetKernelArg(m_viterbiKernel, 8, sizeof(cl_int), (void*)&g_high);
+	err |= clSetKernelArg(m_viterbiKernel, 9, sizeof(cl_int), (void*)&g_low);
 
 	if (CL_SUCCESS != err)
 	{
@@ -349,8 +362,8 @@ int Viterbi::viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high)
 	err = clEnqueueWriteBuffer(m_command_queue, cmLine_x, CL_FALSE, 0, sizeof(int) * m_img_width, line_x, 0, NULL, NULL);
 	while (start_column < m_img_width && !err)
 	{
-		err = clSetKernelArg(viterbi_forward, 10, sizeof(cl_int), (void*)&start_column);
-		err |= clEnqueueNDRangeKernel(m_command_queue, viterbi_forward, 1, NULL, &global_size, NULL, 0, NULL, NULL);
+		err = clSetKernelArg(m_viterbiKernel, 10, sizeof(cl_int), (void*)&start_column);
+		err |= clEnqueueNDRangeKernel(m_command_queue, m_viterbiKernel, 1, NULL, &global_size, NULL, 0, NULL, NULL);
 
 		// Copy results from the memory buffer */
 		err |= clEnqueueReadBuffer(m_command_queue, cmLine_x, CL_TRUE, 0,
@@ -359,8 +372,7 @@ int Viterbi::viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high)
 	}
 	line_x[m_img_width - 1] = line_x[m_img_width - 2];
 	//realase resources
-	err = clReleaseKernel(viterbi_forward);
-	err = clReleaseProgram(program);
+
 	err = clReleaseMemObject(cmLine_x);
 	err = clReleaseMemObject(cmL);
 	err = clReleaseMemObject(cmImg);
@@ -368,6 +380,13 @@ int Viterbi::viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high)
 	err = clReleaseMemObject(cmV1);
 	err = clReleaseMemObject(cmV2);
 	return CL_SUCCESS;
+}
+
+void Viterbi::setImg(const unsigned char *img, size_t img_height, size_t img_width)
+{
+	m_img = img;
+	m_img_width = img_width;
+	m_img_height = img_height;
 }
 
 int Viterbi::launchViterbiMultiThread(std::vector<unsigned int>& line_x, int g_low, int g_high)
