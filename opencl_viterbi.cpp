@@ -403,7 +403,7 @@ int main(void)
 	//basic tests, later call test viterbi
 	PlotInfo pInfo;
 	//declare list of images - maybe load from file later
-	std::vector<std::string> images{ "line_error_test_0.bmp", "line_error_test_1.bmp" , "line_error_test_2.bmp" };
+	std::vector<std::string> images{"line_error_test_2.bmp" };// "line_error_test_0.bmp", "line_error_test_1.bmp" , 
 
 	//basicTest();
 	std::vector<std::vector<uint32_t> > test_lines;
