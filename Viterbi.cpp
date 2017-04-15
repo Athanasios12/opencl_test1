@@ -324,9 +324,14 @@ int Viterbi::viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high)
 	printf("L indices matrixes size : %d MB", int(double(img_size * global_size * sizeof(float) / double(1024 * 1024))));
 #endif
 	//handle not enough GPU memory
-	if (max_buff_size < tot_mem)
+	//if (max_buff_size < tot_mem)
+	//{
+	//	int mem_multiple = (int)(tot_mem / max_buff_size);
+	//	global_size = m_img_width / (mem_multiple + 1);
+	//}
+	if (dev_mem < tot_mem)
 	{
-		int mem_multiple = (int)(tot_mem / max_buff_size);
+		int mem_multiple = (int)(tot_mem / dev_mem);
 		global_size = m_img_width / (mem_multiple + 1);
 	}
 
