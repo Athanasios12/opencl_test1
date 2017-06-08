@@ -15,9 +15,9 @@ using namespace cimg_library;
 using namespace std;
 
 //image settings
-const char IMG_FILE[] = "line_error_test_2.bmp";
-const int G_LOW = -8;
-const int G_HIGH = 8;
+const char IMG_FILE[] = "line_2.bmp";
+const int G_LOW = -2;
+const int G_HIGH = 2;
 
 void rgb2Gray(const CImg<unsigned char> &img, CImg<unsigned char> &grayImg)
 {
@@ -311,7 +311,7 @@ void basicTest()
 	if (CL_SUCCESS != initializeCL(command_queue, context, device_id))
 	{
 		printf("\nFailed OpenCl initialization!\n");
-return;
+		return;
 	}
 	CImg<unsigned char> img(IMG_FILE);
 	CImg<unsigned char> gray_img(img.width(), img.height(), 1, 1, 0);
@@ -400,11 +400,14 @@ return;
 
 int main(void)
 {
+#ifdef _DEBUG
+	basicTest();
+#else
 	//basic tests, later call test viterbi
 	PlotInfo pInfo;
 	//declare list of images - maybe load from file later
 	std::vector<std::string> images{"line_error_test_0.bmp", "line_error_test_1.bmp", "line_error_test_2.bmp" };
-	basicTest();
+	
 	std::vector<std::vector<uint32_t> > test_lines;
 	std::vector<uint32_t> test_line;
 	char buff[100];
@@ -419,8 +422,6 @@ int main(void)
 	if (success)
 	{
 		test_viterbi(images, G_HIGH, G_LOW, 1, pInfo, test_lines); // init g_low, g_high = <-5, 5>
-		//check inside the test viterbi function if errors are indeed the same, if not something is not right, because algorithms results should be indentical
-		//error should be the same for all algorithms, only time should be different
 		std::vector<std::string> columns{ "img_num", "img_size", "g_low", "g_high", "error", "GPU", "SERIAL", "CPU_THREADS" };											
 		generateCsv("test_results.csv", pInfo, columns);
 	}
@@ -428,6 +429,6 @@ int main(void)
 	{
 		cout << "Failed reading test line file" << endl;
 	}
-
+#endif
 	return 0;
 }

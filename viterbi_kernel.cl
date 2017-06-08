@@ -1,54 +1,8 @@
-__kernel void viterbi_forward( __global const unsigned char * img, __global float *L, __global float *V, int img_height, int img_width, int column, int g_low, int g_high)
-{
-	int row = get_global_id(0);
-	if (row >= img_height)
-	{
-		return;
-	}
-	float max_val = 0;
-	unsigned char pixel_value = 0;
-	for (int g = g_low; g <= g_high; g++)
-	{
-		if ((row + g) > (img_height - 1))
-		{
-			break;
-		}
-		if ((row + g) < 0)
-		{
-			continue;
-		}
-		pixel_value = img[(img_width * (row + g)) + column];
-		if ((pixel_value + V[((row + g) * img_width) + (column)]) > max_val)
-		{
-			max_val = pixel_value + V[((row + g) * img_width) + (column)];
-			L[(row * img_width) + column] = g;
-		}
-	}
-	V[(row * img_width) + (column + 1)] = max_val;
-	//add blockade here to wait for all rows to get processed, after
-	//do the same trick with Vnew and Vold instead of calculating
-	//and storing V for every column not calculate onl for one column and call it again,
-	//instead call it for every column in range from <start_col; img_width - 2>
-	//After finishing all columns outside of kernel backtrack and save the solution, then call again for
-	//next start_col until start_col = img_width - 1;
-}
-
-__kernel void initV(__global float *V, int img_height, int img_width, int start_column)
-{
-	int row = get_global_id(0);
-	if (row >= img_height)
-	{
-		return;
-	}
-	V[(row * img_width) + start_column] = 0;	
-}
-
 __kernel void viterbi_function(__global const unsigned char *img,
 								__global float *L, 
 								__global int *line_x, 
 								__global float* V_1,
 								__global float* V_2,
-								__global int *x_cord,
 								int img_height,
 								int img_width, 
 								int g_high,
@@ -69,6 +23,7 @@ __kernel void viterbi_function(__global const unsigned char *img,
 	__global float *V_new = &V_2[V_id];
 	// init first column with zeros
 	int n = 0;
+	int x_n = 0;
 	for (int m = 0; m < img_height; m++)
 	{
 		V_old[m] = 0;
@@ -111,11 +66,11 @@ __kernel void viterbi_function(__global const unsigned char *img,
 		}
 	}
 	//backwards phase - retrace the path
-	x_cord[n] = x_max;
+	x_n = x_max;
 	for (; n > start_column; n--)
 	{
-		x_cord[n - 1] = x_cord[n] + L[L_id + (x_cord[n] * img_width) + (n - 1)]; //L[L_id][row][column]
+		x_n = x_n + L[L_id + (x_n * img_width) + (n - 1)]; //L[L_id][row][column]
 	}
 	// save only last pixel position
-	line_x[start_column + first_col] = x_cord[start_column];
+	line_x[start_column + first_col] = x_n;
 }

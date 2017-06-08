@@ -4,8 +4,6 @@
 
 using namespace std;
 
-const uint8_t NUM_OF_THREADS = 8;
-
 Viterbi::Viterbi(const cl_command_queue & command_queue, const cl_context & context, cl_device_id device_id):
 	m_img(NULL),
 	m_command_queue(command_queue),
@@ -335,7 +333,7 @@ int Viterbi::viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high)
 	err = clEnqueueWriteBuffer(m_command_queue, cmImg, CL_FALSE, 0, sizeof(unsigned char) * img_size, m_img, 0, NULL, NULL);
 
 	cl_mem cmLine_x = clCreateBuffer(m_context, CL_MEM_READ_WRITE, m_img_width * sizeof(int), NULL, &err);
-	cl_mem cmX_cord = clCreateBuffer(m_context, CL_MEM_READ_WRITE, m_img_width * sizeof(int), NULL, &err);
+	//cl_mem cmX_cord = clCreateBuffer(m_context, CL_MEM_READ_WRITE, m_img_width * sizeof(int), NULL, &err);
 	cl_mem cmV1 = clCreateBuffer(m_context, CL_MEM_READ_WRITE, m_img_height * m_img_width * sizeof(float), NULL, &err);
 	cl_mem cmV2 = clCreateBuffer(m_context, CL_MEM_READ_WRITE, m_img_height * m_img_width * sizeof(float), NULL, &err);
 	cl_mem cmL = clCreateBuffer(m_context, CL_MEM_READ_WRITE, img_size * global_size * sizeof(float), NULL, &err);
@@ -346,11 +344,11 @@ int Viterbi::viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high)
 	err |= clSetKernelArg(m_viterbiKernel, 2, sizeof(cl_mem), (void*)&cmLine_x);
 	err |= clSetKernelArg(m_viterbiKernel, 3, sizeof(cl_mem), (void*)&cmV1);
 	err |= clSetKernelArg(m_viterbiKernel, 4, sizeof(cl_mem), (void*)&cmV2);
-	err |= clSetKernelArg(m_viterbiKernel, 5, sizeof(cl_mem), (void*)&cmX_cord);
-	err |= clSetKernelArg(m_viterbiKernel, 6, sizeof(cl_int), (void*)&m_img_height);
-	err |= clSetKernelArg(m_viterbiKernel, 7, sizeof(cl_int), (void*)&m_img_width);
-	err |= clSetKernelArg(m_viterbiKernel, 8, sizeof(cl_int), (void*)&g_high);
-	err |= clSetKernelArg(m_viterbiKernel, 9, sizeof(cl_int), (void*)&g_low);
+	//err |= clSetKernelArg(m_viterbiKernel, 5, sizeof(cl_mem), (void*)&cmX_cord);
+	err |= clSetKernelArg(m_viterbiKernel, 5, sizeof(cl_int), (void*)&m_img_height);
+	err |= clSetKernelArg(m_viterbiKernel, 6, sizeof(cl_int), (void*)&m_img_width);
+	err |= clSetKernelArg(m_viterbiKernel, 7, sizeof(cl_int), (void*)&g_high);
+	err |= clSetKernelArg(m_viterbiKernel, 8, sizeof(cl_int), (void*)&g_low);
 
 	if (CL_SUCCESS != err)
 	{
@@ -362,7 +360,7 @@ int Viterbi::viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high)
 	err = clEnqueueWriteBuffer(m_command_queue, cmLine_x, CL_FALSE, 0, sizeof(int) * m_img_width, line_x, 0, NULL, NULL);
 	while (start_column < m_img_width && !err)
 	{
-		err = clSetKernelArg(m_viterbiKernel, 10, sizeof(cl_int), (void*)&start_column);
+		err = clSetKernelArg(m_viterbiKernel, 9, sizeof(cl_int), (void*)&start_column);
 		err |= clEnqueueNDRangeKernel(m_command_queue, m_viterbiKernel, 1, NULL, &global_size, NULL, 0, NULL, NULL);
 
 		// Copy results from the memory buffer */
@@ -376,7 +374,7 @@ int Viterbi::viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high)
 	err = clReleaseMemObject(cmLine_x);
 	err = clReleaseMemObject(cmL);
 	err = clReleaseMemObject(cmImg);
-	err = clReleaseMemObject(cmX_cord);
+//	err = clReleaseMemObject(cmX_cord);
 	err = clReleaseMemObject(cmV1);
 	err = clReleaseMemObject(cmV2);
 	return CL_SUCCESS;
@@ -394,16 +392,18 @@ int Viterbi::launchViterbiMultiThread(std::vector<unsigned int>& line_x, int g_l
 	uint32_t to_process = m_img_width - 1;
 	uint32_t start_col = 0;
 	uint32_t idx = 0;
-	std::vector<unsigned int> line(NUM_OF_THREADS);
-	std::vector<std::future<unsigned int> > viterbiThreads(NUM_OF_THREADS);
+	uint8_t num_of_threads = std::thread::hardware_concurrency();
+	std::vector<unsigned int> line(num_of_threads);
+	std::vector<std::future<unsigned int> > viterbiThreads(num_of_threads);
 	while (to_process > 0)
 	{
 		uint8_t launched_threads = 0;
-		for (uint8_t i = 0; i < NUM_OF_THREADS; i++)
+		for (uint8_t i = 0; i < num_of_threads; i++)
 		{
 			if (start_col < m_img_width - 1)
 			{
-				viterbiThreads[i] = (std::async(launch::async, &Viterbi::viterbiMultiThread, this, g_low, g_high, start_col));
+				viterbiThreads[i] = (std::async(launch::async,
+					&Viterbi::viterbiMultiThread, this, g_low, g_high, start_col));
 				++start_col;
 				++launched_threads;
 				--to_process;
