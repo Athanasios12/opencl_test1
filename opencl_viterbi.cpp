@@ -15,7 +15,7 @@ using namespace cimg_library;
 using namespace std;
 
 //image settings
-const char IMG_FILE[] = "line_error_test_2.bmp";
+const char IMG_FILE[] = "line_2.bmp";
 const int G_LOW = -8;
 const int G_HIGH = 8;
 
@@ -26,9 +26,6 @@ void rgb2Gray(const CImg<unsigned char> &img, CImg<unsigned char> &grayImg)
 		int R = (int)img(x, y, 0, 0);
 		int G = (int)img(x, y, 0, 1);
 		int B = (int)img(x, y, 0, 2);
-
-		// obtain gray value from different weights of RGB channels
-		//int gray_value = (int)(0.299 * R + 0.587 * G + 0.114 * B);
 		int gray_value = (int)((R + G + B) / 3);
 		grayImg(x, y, 0, 0) = gray_value;
 	}
@@ -93,7 +90,6 @@ int initializeCL(cl_command_queue &command_queue, cl_context &context, cl_device
 	return CL_SUCCESS;
 }
 
-//maybe add clr tabel creation for python/matlab representation or gnuplot
 typedef struct
 {
 	uint32_t m_img_num;
@@ -222,18 +218,6 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 			line_results.push_back(line_x);
 			times.push_back(time_ms);
 			cout << "\nSerial time :" << time_ms << endl;
-			/*
-			gpu rows version
-			start = clock();
-			//viterbi parallel rows gpu version
-			viterbi.viterbiLineOpenCL_rows(&line_x[0], g_low, g_high);
-			end = clock();
-			time_ms = (double)(end - start);
-
-			line_results.push_back(line_x);
-			times.push_back(time_ms);
-			*/
-
 			//cpu multithread version
 			start = clock();
 			viterbi.launchViterbiMultiThread(line_x, g_low, g_high);
@@ -302,6 +286,51 @@ void generateCsv(const std::string &file, const PlotInfo &pInfo, const std::vect
 	}
 }
 
+void hybridTest()
+{
+	cl_device_id device_id = NULL;
+	cl_command_queue command_queue = NULL;
+	cl_context context = NULL;
+	//initalize OpenCL 
+	if (CL_SUCCESS != initializeCL(command_queue, context, device_id))
+	{
+		printf("\nFailed OpenCl initialization!\n");
+		return;
+	}
+	CImg<unsigned char> img(IMG_FILE);
+	CImg<unsigned char> gray_img(img.width(), img.height(), 1, 1, 0);
+	//convert to monochrome image
+	rgb2Gray(img, gray_img);
+
+	std::unique_ptr<unsigned char> img_out(new unsigned char[img.width() * img.height()]);
+	memcpy(img_out.get(), gray_img.data(0, 0, 0, 0), img.width() * img.height());
+
+	std::vector<unsigned int> line_x(img.width());
+	Viterbi viterbi(command_queue, context, device_id);
+	viterbi.setImg(gray_img, img.height(), img.width());
+
+	clock_t start = clock();
+	viterbi.launchHybridViterbi(line_x, -2, 2);
+	clock_t end = clock();
+	double time_ms = (double)(end - start);
+	for (int i = 0; i < img.width(); i++)
+	{
+		img(i, (int)line_x[i], 0, 0) = 0;
+		img(i, (int)line_x[i], 0, 1) = 0;
+		img(i, (int)line_x[i], 0, 2) = 255;
+	}
+	printf("\nViterbi parallel time , threads CPU version: %f ms\n", time_ms);
+	//CImgDisplay rgb3_disp(img, "Image rgb3");
+
+	img.save_bmp("hybrid.bmp");
+	//cleanup
+	int err = 0;
+	err = clFlush(command_queue);
+	err = clFinish(command_queue);
+	err = clReleaseCommandQueue(command_queue);
+	err = clReleaseContext(context);
+}
+
 void basicTest()
 {
 	cl_device_id device_id = NULL;
@@ -311,7 +340,7 @@ void basicTest()
 	if (CL_SUCCESS != initializeCL(command_queue, context, device_id))
 	{
 		printf("\nFailed OpenCl initialization!\n");
-return;
+		return;
 	}
 	CImg<unsigned char> img(IMG_FILE);
 	CImg<unsigned char> gray_img(img.width(), img.height(), 1, 1, 0);
@@ -325,7 +354,7 @@ return;
 	Viterbi viterbi(command_queue, context, device_id);
 	viterbi.setImg(gray_img, img.height(), img.width());
 	clock_t start = clock();
-	viterbi.viterbiLineOpenCL_cols(&line_x[0], G_LOW, G_HIGH);
+	viterbi.launchViterbiMultiThread(line_x, -4, 4);
 	clock_t end = clock();
 	double time_ms = (double)(end - start);
 	for (int i = 0; i < img.width(); i++)
@@ -336,16 +365,9 @@ return;
 	}
 	CImgDisplay gray_disp(gray_img, "image gray");
 	CImgDisplay rgb_disp(img, "image rgb1");
-	printf("\nviterbi parallel time, cols version: %f ms\n", time_ms);
-
-	//reset line_x 
-	for (uint32_t i = 0; i < img.width(); i++)
-	{
-		line_x[i] = 0;
-	}
-
+	printf("\nViterbi parallel time , threads CPU version: %f ms\n", time_ms);
 	start = clock();
-	viterbi.viterbiLineDetect(line_x, G_LOW, G_HIGH);
+	viterbi.viterbiLineDetect(line_x, -4, 4);
 	end = clock();
 	time_ms = (double)(end - start);
 	for (int i = 0; i < img.width(); i++)
@@ -356,15 +378,9 @@ return;
 	}
 	printf("\nViterbi serial time: %f ms\n", time_ms);
 	CImgDisplay rgb1_disp(img, "Image rgb2");
-
-	//reset line_x 
-	for (uint32_t i = 0; i < img.width(); i++)
-	{
-		line_x[i] = 0;
-	}
-
+	line_x = std::vector<unsigned int>(img.width(), 0);
 	start = clock();
-	viterbi.launchViterbiMultiThread(line_x, G_LOW, G_HIGH);
+	viterbi.viterbiLineOpenCL_cols(&line_x[0], -4, 4);
 	end = clock();
 	time_ms = (double)(end - start);
 	for (int i = 0; i < img.width(); i++)
@@ -373,39 +389,30 @@ return;
 		img(i, (int)line_x[i], 0, 1) = 0;
 		img(i, (int)line_x[i], 0, 2) = 255;
 	}
-	printf("\nViterbi parallel time , threads CPU version: %f ms\n", time_ms);
+	printf("\nviterbi parallel time, cols version: %f ms\n", time_ms);
 	CImgDisplay rgb2_disp(img, "Image rgb3");
-	img.save_bmp("threds1.bmp");
-
-	/*start = clock();
-	viterbiLineOpenCL_rows(img_out.get(), img.height(), img.width(), &line_x[0], G_LOW, G_HIGH, command_queue, context, device_id);
-	end = clock();
-	time_ms = (double)(end - start);
-	for (int i = 0; i < img.width(); i++)
-	{
-	img(i, (int)line_x[i], 0, 0) = 0;
-	img(i, (int)line_x[i], 0, 1) = 0;
-	img(i, (int)line_x[i], 0, 2) = 255;
-	}
-	printf("\nViterbi parallel time , rows version: %f ms\n", time_ms);
-	CImgDisplay rgb2_disp(img, "Image rgb3");*/
-	while (!rgb2_disp.is_closed());
 	//cleanup
 	int err = 0;
 	err = clFlush(command_queue);
 	err = clFinish(command_queue);
 	err = clReleaseCommandQueue(command_queue);
 	err = clReleaseContext(context);
+
+	img.save_bmp("threds1.bmp");
+	while (!rgb2_disp.is_closed());
 }
 
 int main(void)
 {
+#ifdef _DEBUG
+	//basicTest();
+	hybridTest();
+#else
 	//basic tests, later call test viterbi
 	PlotInfo pInfo;
 	//declare list of images - maybe load from file later
-	std::vector<std::string> images{"line_error_test_2.bmp" };// "line_error_test_0.bmp", "line_error_test_1.bmp" , 
-
-	//basicTest();
+	std::vector<std::string> images{"line_error_test_0.bmp", "line_error_test_1.bmp", "line_error_test_2.bmp" };
+	
 	std::vector<std::vector<uint32_t> > test_lines;
 	std::vector<uint32_t> test_line;
 	char buff[100];
@@ -420,8 +427,6 @@ int main(void)
 	if (success)
 	{
 		test_viterbi(images, G_HIGH, G_LOW, 1, pInfo, test_lines); // init g_low, g_high = <-5, 5>
-		//check inside the test viterbi function if errors are indeed the same, if not something is not right, because algorithms results should be indentical
-		//error should be the same for all algorithms, only time should be different
 		std::vector<std::string> columns{ "img_num", "img_size", "g_low", "g_high", "error", "GPU", "SERIAL", "CPU_THREADS" };											
 		generateCsv("test_results.csv", pInfo, columns);
 	}
@@ -429,6 +434,6 @@ int main(void)
 	{
 		cout << "Failed reading test line file" << endl;
 	}
-
+#endif
 	return 0;
 }
