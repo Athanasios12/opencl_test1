@@ -18,9 +18,162 @@ using namespace std;
 using namespace rapidxml;
 
 //image settings
-const char IMG_FILE[] = "noise_1.bmp";
-const int G_LOW = -8;
-const int G_HIGH = 8;
+const char CONFIG_FILE[] = "viterbi_config.xml";
+const char DEBUG_SETTINGS_NODE[] = "DebugSettings";
+const char RELEASE_SETTINGS_NODE[] = "ReleaseSettings";
+const char DEBUG_IMG_NODE[] = "img_in";
+const char DEBUG_RESULT_NODE[] = "result";
+const char TESTFILES_NODE[] = "TestFiles";
+const char GLOW_NODE[] = "G_LOW";
+const char GHIGH_NODE[] = "G_HIGH";
+const char LINEWIDTH_NODE[] = "LINE_WIDTH";
+const char IMG_NODE[] = "img";
+const char IMG_NAME[] = "name";
+const char IMG_TESTLINE[] = "test_line";
+const char GRANGE_NODE[] = "GRange";
+const char CSV_NODE[] = "CSV";
+
+
+
+//maybe add clr tabel creation for python/matlab representation or gnuplot
+typedef struct
+{
+	uint32_t m_img_num;
+	std::string m_img_name;
+	double m_img_size;
+	int m_g_low;
+	int m_g_high;
+	std::vector<double> m_exec_time;
+	std::vector<std::vector<unsigned int> > m_lines_pos;
+	uint32_t m_detectionError;
+}PlotData;
+
+typedef struct
+{
+	std::vector<PlotData> m_pData;
+	uint32_t m_plot_id;
+}PlotInfo;
+
+typedef struct
+{
+	uint8_t R;
+	uint8_t G;
+	uint8_t B;
+}Color;
+
+typedef struct
+{
+	int g_high;
+	int g_low;
+	int line_width;
+	std::vector<std::string> img_names;
+	std::vector<std::string> test_lines;
+	std::string csvFile;
+
+}TestSettings;
+
+bool readConfig(bool debugMode, TestSettings &settings)
+{
+	xml_document<> doc;
+	std::ifstream file(CONFIG_FILE);
+	std::stringstream buffer;
+	bool success = false;
+	if (file.is_open())
+	{
+		buffer << file.rdbuf();
+		file.close();
+		std::string content(buffer.str());
+		doc.parse<0>(&content[0]);
+
+		//xml parsing
+		xml_node<> *pRoot = doc.first_node();
+		cout << pRoot->name() << endl;
+		cout << pRoot->next_sibling()->name() << endl;
+		for (xml_node<> *mainNode = doc.first_node(); mainNode; mainNode = mainNode->next_sibling())
+		{
+			if (debugMode && (std::string(mainNode->name()).compare(DEBUG_SETTINGS_NODE) == 0))
+			{
+				for (xml_node<> *pNode = mainNode->first_node(); pNode; pNode = pNode->next_sibling())
+				{
+					std::string nodeName = pNode->name();
+					if (nodeName.compare(TESTFILES_NODE) == 0)
+					{
+						for (xml_node<> *imgPtr = pNode->first_node(); imgPtr; imgPtr = imgPtr->next_sibling())
+						{
+							settings.img_names.push_back(imgPtr->value());
+						}
+					}
+					else if (nodeName.compare(GLOW_NODE) == 0)
+					{
+						settings.g_low = std::stoi(pNode->value());
+					}
+					else if (nodeName.compare(GHIGH_NODE) == 0)
+					{
+						settings.g_high = std::stoi(pNode->value());
+					}
+					else if (nodeName.compare(LINEWIDTH_NODE) == 0)
+					{
+						settings.line_width = std::stoi(pNode->value());
+					}
+				}
+			}
+			else if (!debugMode && (std::string(mainNode->name()).compare(RELEASE_SETTINGS_NODE) == 0))
+			{
+				for (xml_node<> *pNode = mainNode->first_node(); pNode; pNode = pNode->next_sibling())
+				{
+					std::string nodeName = pNode->name();
+					if (nodeName.compare(TESTFILES_NODE) == 0)
+					{
+						for (xml_node<> *imgPtr = pNode->first_node(); imgPtr; imgPtr = imgPtr->next_sibling())
+						{
+							std::string name = imgPtr->name();
+							if (name.compare(IMG_NODE) == 0)
+							{
+								for (xml_node<> *imgInfo = imgPtr->first_node(); imgInfo; imgInfo = imgInfo->next_sibling())
+								{
+									std::string info = imgInfo->name();
+									if (info.compare(IMG_NAME) == 0)
+									{
+										settings.img_names.push_back(imgInfo->value());
+									}
+									if (info.compare(IMG_TESTLINE) == 0)
+									{
+										settings.test_lines.push_back(imgInfo->value());
+									}
+								}
+							}
+						}
+					}
+					if (nodeName.compare(GRANGE_NODE) == 0)
+					{
+						for (xml_node<> *gPtr = pNode->first_node(); gPtr; gPtr = gPtr->next_sibling())
+						{
+							std::string gName = gPtr->name();
+							if (gName.compare(GLOW_NODE) == 0)
+							{
+								settings.g_low = std::stoi(gPtr->value());
+							}
+							if (gName.compare(GHIGH_NODE) == 0)
+							{
+								settings.g_high = std::stoi(gPtr->value());
+							}
+						}
+					}
+					if (nodeName.compare(CSV_NODE) == 0)
+					{
+						settings.csvFile = pNode->value();
+					}
+					if (nodeName.compare(LINEWIDTH_NODE) == 0)
+					{
+						settings.line_width = std::stoi(pNode->value());
+					}
+				}
+			}
+		}
+		return true;
+	}
+	return false;
+}
 
 void rgb2Gray(const CImg<unsigned char> &img, CImg<unsigned char> &grayImg)
 {
@@ -96,32 +249,16 @@ int initializeCL(cl_command_queue &command_queue, cl_context &context, cl_device
 	return CL_SUCCESS;
 }
 
-//maybe add clr tabel creation for python/matlab representation or gnuplot
-typedef struct
-{
-	uint32_t m_img_num;
-	std::string m_img_name;
-	double m_img_size;
-	int m_g_low;
-	int m_g_high;
-	std::vector<double> m_exec_time;
-	std::vector<std::vector<unsigned int> > m_lines_pos;
-	uint32_t m_detectionError;
-}PlotData;
-
-typedef struct
-{
-	std::vector<PlotData> m_pData;
-	uint32_t m_plot_id;
-}PlotInfo;
-
-void displayTrackedLine(CImg<unsigned char> &img, const std::vector<unsigned int> &line_x, uint8_t n)
+void displayTrackedLine(CImg<unsigned char> &img, const std::vector<unsigned int> &line_x, int line_width, Color color)
 {
 	for (int i = 0; i < img.width(); i++)
 	{
-		img(i, (int)line_x[i], 0, 0) = 255 - (10 * n);
-		img(i, (int)line_x[i], 0, 1) = 0 + (10 * n);
-		img(i, (int)line_x[i], 0, 2) = 80 + (7 * n);
+		for (int j = -line_width; i <= line_width; j++)
+		{
+			img(i, (int)line_x[i] + j, 0, 0) = color.R;
+			img(i, (int)line_x[i] + j, 0, 1) = color.G;
+			img(i, (int)line_x[i] + j, 0, 2) = color.B;
+		}
 	}
 }
 
@@ -142,7 +279,6 @@ bool readTestLine(const std::string &fileName, std::vector<uint32_t> &test_line)
 	{
 		return false;
 	}
-	
 	return true;
 }
 
@@ -155,10 +291,6 @@ uint32_t checkDetectionError(const std::vector<unsigned int> &line, const std::v
 		{
 			error += uint32_t(abs(int(test_line[i]) - int(line[i])));
 		}
-	}
-	if (error == 0)
-	{
-		cout << " ";
 	}
 	return error;
 }
@@ -270,7 +402,7 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 	}
 	//cleanup
 	int err = 0;
-	err = clFlush(command_queue); 
+	err = clFlush(command_queue);
 	err = clFinish(command_queue);
 	err = clReleaseCommandQueue(command_queue);
 	err = clReleaseContext(context);
@@ -360,7 +492,7 @@ void basicTest()
 	time_ms = (double)(end - start);
 	for (int i = 0; i < img.width(); i++)
 	{
-		for (int j = -2 ; j < 3; j++)
+		for (int j = -2; j < 3; j++)
 		{
 			img(i, (int)line_x[i] + j, 0, 0) = 255;
 			img(i, (int)line_x[i] + j, 0, 1) = 0;
@@ -377,39 +509,4 @@ void basicTest()
 	err = clFinish(command_queue);
 	err = clReleaseCommandQueue(command_queue);
 	err = clReleaseContext(context);
-}
-
-int main(void)
-{
-#ifdef _DEBUG
-	basicTest();
-#else
-	//basic tests, later call test viterbi
-	PlotInfo pInfo;
-	//declare list of images - maybe load from file later
-	std::vector<std::string> images{"line_error_test_0.bmp", "line_error_test_1.bmp", "line_error_test_2.bmp" };
-	
-	std::vector<std::vector<uint32_t> > test_lines;
-	std::vector<uint32_t> test_line;
-	char buff[100];
-	bool success = true;
-	for (uint32_t i = 0; i < images.size(); i++)
-	{
-		_itoa_s(i, buff, 10);
-		std::string file_name = "line_pos_" + std::string(buff) + ".txt";
-		success = readTestLine(file_name, test_line);
-		test_lines.push_back(test_line);
-	}
-	if (success)
-	{
-		test_viterbi(images, G_HIGH, G_LOW, 1, pInfo, test_lines); // init g_low, g_high = <-5, 5>
-		std::vector<std::string> columns{ "img_num", "img_size", "g_low", "g_high", "error", "GPU", "SERIAL", "CPU_THREADS" };											
-		generateCsv("test_results.csv", pInfo, columns);
-	}
-	else
-	{
-		cout << "Failed reading test line file" << endl;
-	}
-#endif
-	return 0;
 }

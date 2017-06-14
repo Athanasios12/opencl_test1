@@ -450,7 +450,8 @@ unsigned int Viterbi::viterbiMultiThread(int g_low, int g_high, unsigned int sta
 					continue;
 				}
 				int curr_id = j + g;
-				pixel_value = m_img[((curr_id)* m_img_width) + n];
+				double distance_coeff = 1 - abs(g * 0.2);
+				pixel_value = (unsigned char)((double) m_img[((curr_id)* m_img_width) + n] * distance_coeff);
 				if ((pixel_value + V[(m_img_width * curr_id) + n]) > max_val)
 				{
 					max_val = pixel_value + V[(m_img_width * curr_id) + n];

@@ -132,6 +132,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="CImg.h" />
+    <ClInclude Include="Tests.h" />
     <ClInclude Include="Viterbi.h" />
   </ItemGroup>
   <ItemGroup>
