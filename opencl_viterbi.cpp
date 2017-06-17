@@ -15,7 +15,7 @@ using namespace cimg_library;
 using namespace std;
 
 //image settings
-const char IMG_FILE[] = "line_2.bmp";
+const char IMG_FILE[] = "line_4.bmp";
 const int G_LOW = -8;
 const int G_HIGH = 8;
 
@@ -319,7 +319,11 @@ void hybridTest()
 		img(i, (int)line_x[i], 0, 1) = 0;
 		img(i, (int)line_x[i], 0, 2) = 255;
 	}
-	printf("\nViterbi parallel time , threads CPU version: %f ms\n", time_ms);
+	start = clock();
+	viterbi.launchHybridViterbi(line_x, -2, 2);
+	end = clock();
+	double time_optimized = (double)(end - start);
+	printf("\nHybrid before: %f ms \t after : %f ms\n", time_ms, time_optimized);
 	//CImgDisplay rgb3_disp(img, "Image rgb3");
 
 	img.save_bmp("hybrid.bmp");
@@ -405,7 +409,7 @@ void basicTest()
 int main(void)
 {
 #ifdef _DEBUG
-	//basicTest();
+	basicTest();
 	hybridTest();
 #else
 	//basic tests, later call test viterbi

@@ -140,7 +140,8 @@ def plot(data_plots):
         fig.savefig("plot" + str(i), dpi = fig.dpi)
         i += 1
 #main script
-plot_data = open("test_results.csv", 'r')
+file_name = raw_input('Enter results file name:')
+plot_data = open(file_name, 'r')
 c_reader = csv.reader(plot_data, delimiter=',', quotechar='|')
 plots = []
 i = 0

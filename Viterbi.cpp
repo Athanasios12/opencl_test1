@@ -62,7 +62,7 @@ bool Viterbi::loadAndBuildKernel()
 	}
 	// Create OpenCL Kernels
 	m_viterbiKernel = clCreateKernel(m_program, VITERBI_COLS_FUNCTION, &err);
-	m_viterbiKernel = clCreateKernel(m_program, VITERBI_GPU_FRAGMENT_FUNCTION, &err);
+	m_viterbiHybridKernel = clCreateKernel(m_program, VITERBI_GPU_FRAGMENT_FUNCTION, &err);
 	return err == CL_SUCCESS;
 }
 
@@ -265,7 +265,7 @@ void Viterbi::setImg(const unsigned char *img, size_t img_height, size_t img_wid
 	//check if image size changed significantly
 	if (m_set_hybrid_rate)
 	{
-		double tolerance = 0.1;
+		double tolerance = 0.1; //maybe get as parameter with default value - in function call
 		double diff_h = (abs(static_cast<double>(m_img_height) - static_cast<double>(old_height))) / static_cast<double>(old_height);
 		double diff_w = (abs(static_cast<double>(m_img_width)-static_cast<double>(old_width))) / static_cast<double>(old_width);
 		if (diff_h > tolerance || diff_w > tolerance)
@@ -388,9 +388,13 @@ double Viterbi::viterbiHybridCPU(std::vector<unsigned int> &line_x, int g_low, i
 	while (to_process > 0)
 	{
 		uint8_t launched_threads = 0;
+		if (to_process < 10 && m_set_hybrid_rate)
+		{
+			cout << endl;
+		}
 		for (uint8_t i = 0; i < num_of_threads; i++)
 		{
-			if (start_col <= end_col)
+			if (start_col < end_col)
 			{
 				viterbiThreads[i] = (std::async(launch::async,
 					&Viterbi::viterbiMultiThread, this, g_low, g_high, start_col));
@@ -454,17 +458,17 @@ double Viterbi::viterbiHybridGPU(unsigned int *line_x, int g_low, int g_high, ui
 	cl_mem cmL = clCreateBuffer(m_context, CL_MEM_READ_WRITE, L_size * global_size * sizeof(float), NULL, &err);
 
 	//set kernel arguments
-	err = clSetKernelArg(m_viterbiKernel, 0, sizeof(cl_mem), (void*)&cmImg);
-	err |= clSetKernelArg(m_viterbiKernel, 1, sizeof(cl_mem), (void*)&cmL);
-	err |= clSetKernelArg(m_viterbiKernel, 2, sizeof(cl_mem), (void*)&cmLine_x);
-	err |= clSetKernelArg(m_viterbiKernel, 3, sizeof(cl_mem), (void*)&cmV1);
-	err |= clSetKernelArg(m_viterbiKernel, 4, sizeof(cl_mem), (void*)&cmV2);
-	err |= clSetKernelArg(m_viterbiKernel, 5, sizeof(cl_int), (void*)&m_img_height);
-	err |= clSetKernelArg(m_viterbiKernel, 6, sizeof(cl_int), (void*)&m_img_width);
-	err |= clSetKernelArg(m_viterbiKernel, 7, sizeof(cl_int), (void*)&width);
-	err |= clSetKernelArg(m_viterbiKernel, 8, sizeof(cl_int), (void*)&g_high);
-	err |= clSetKernelArg(m_viterbiKernel, 9, sizeof(cl_int), (void*)&g_low);
-	err |= clSetKernelArg(m_viterbiKernel, 11, sizeof(cl_int), (void*)&start_col);
+	err = clSetKernelArg(m_viterbiHybridKernel, 0, sizeof(cl_mem), (void*)&cmImg);
+	err |= clSetKernelArg(m_viterbiHybridKernel, 1, sizeof(cl_mem), (void*)&cmL);
+	err |= clSetKernelArg(m_viterbiHybridKernel, 2, sizeof(cl_mem), (void*)&cmLine_x);
+	err |= clSetKernelArg(m_viterbiHybridKernel, 3, sizeof(cl_mem), (void*)&cmV1);
+	err |= clSetKernelArg(m_viterbiHybridKernel, 4, sizeof(cl_mem), (void*)&cmV2);
+	err |= clSetKernelArg(m_viterbiHybridKernel, 5, sizeof(cl_int), (void*)&m_img_height);
+	err |= clSetKernelArg(m_viterbiHybridKernel, 6, sizeof(cl_int), (void*)&m_img_width);
+	err |= clSetKernelArg(m_viterbiHybridKernel, 7, sizeof(cl_int), (void*)&width);
+	err |= clSetKernelArg(m_viterbiHybridKernel, 8, sizeof(cl_int), (void*)&g_high);
+	err |= clSetKernelArg(m_viterbiHybridKernel, 9, sizeof(cl_int), (void*)&g_low);
+	err |= clSetKernelArg(m_viterbiHybridKernel, 11, sizeof(cl_int), (void*)&start_col);
 	if (CL_SUCCESS != err)
 	{
 		return -1;
@@ -473,8 +477,8 @@ double Viterbi::viterbiHybridGPU(unsigned int *line_x, int g_low, int g_high, ui
 	err = clEnqueueWriteBuffer(m_command_queue, cmLine_x, CL_FALSE, 0, sizeof(int) * global_size, line_x, 0, NULL, NULL);
 	while ((first_col_linex + start_col) < end_col && !err)
 	{
-		err = clSetKernelArg(m_viterbiKernel, 10, sizeof(cl_int), (void*)&first_col_linex);
-		err |= clEnqueueNDRangeKernel(m_command_queue, m_viterbiKernel, 1, NULL, &global_size, NULL, 0, NULL, NULL);
+		err = clSetKernelArg(m_viterbiHybridKernel, 10, sizeof(cl_int), (void*)&first_col_linex);
+		err |= clEnqueueNDRangeKernel(m_command_queue, m_viterbiHybridKernel, 1, NULL, &global_size, NULL, 0, NULL, NULL);
 
 		// Copy results from the memory buffer
 		err |= clEnqueueReadBuffer(m_command_queue, cmLine_x, CL_TRUE, 0,
@@ -493,7 +497,6 @@ double Viterbi::viterbiHybridGPU(unsigned int *line_x, int g_low, int g_high, ui
 	return (double)(end - start);
 }
 
-//dokoncz tolerancje zmiany rozmiaru obrazu 
 bool Viterbi::launchHybridViterbi(std::vector<unsigned int>& line_x, int g_low, int g_high)
 {
 	if (m_set_hybrid_rate && m_size_changed)
@@ -502,6 +505,7 @@ bool Viterbi::launchHybridViterbi(std::vector<unsigned int>& line_x, int g_low, 
 		m_set_hybrid_rate = false;
 		m_hybrid_rate = std::make_pair(0.5, 0.5);
 	}
+
 	uint32_t start_col_CPU = 0, end_col_CPU = static_cast<uint32_t>(m_hybrid_rate.first * static_cast<double>(m_img_width));
 	uint32_t start_col_GPU = end_col_CPU + 1, end_col_GPU = m_img_width - 1;
 	uint8_t num_of_threads = std::thread::hardware_concurrency();
@@ -522,8 +526,8 @@ bool Viterbi::launchHybridViterbi(std::vector<unsigned int>& line_x, int g_low, 
 		//calculate new rate
 		if (!m_set_hybrid_rate)
 		{
-			double rate = time_cpu / time_gpu;
-			m_hybrid_rate = std::make_pair(rate, 1 - rate);
+			double rate = time_cpu / (time_cpu + time_gpu);
+			m_hybrid_rate = std::make_pair(1 - rate, rate);
 			m_set_hybrid_rate = true;
 		}
 		success = true;
