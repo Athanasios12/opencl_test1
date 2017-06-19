@@ -25,9 +25,20 @@
 	<GRange>
 		<G_LOW>-8</G_LOW>
 		<G_HIGH>8</G_HIGH>
+		<G_INCR>1</G_INCR>
 	</GRange>
 	<CSV>test_results.csv</CSV>
 	<LINE_WIDTH>2</LINE_WIDTH>
+	<result_columns>
+		<column>img_num</column>
+		<column>img_size</column>
+		<column>g_low</column>
+		<column>g_high</column>
+		<column>error</column>
+		<column>GPU</column>
+		<column>SERIAL</column>
+		<column>CPU_THREADS</column>
+	</result_columns>
 </ReleaseSettings>
 
 

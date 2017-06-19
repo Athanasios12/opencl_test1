@@ -26,16 +26,16 @@ const char DEBUG_RESULT_NODE[] = "result";
 const char TESTFILES_NODE[] = "TestFiles";
 const char GLOW_NODE[] = "G_LOW";
 const char GHIGH_NODE[] = "G_HIGH";
+const char GINCR_NODE[] = "G_INCR";
 const char LINEWIDTH_NODE[] = "LINE_WIDTH";
 const char IMG_NODE[] = "img";
 const char IMG_NAME[] = "name";
 const char IMG_TESTLINE[] = "test_line";
 const char GRANGE_NODE[] = "GRange";
 const char CSV_NODE[] = "CSV";
+const char RESULT_COLUMNS[] = "result_columns";
+const char COLUMNS_NODE[] = "column";
 
-
-
-//maybe add clr tabel creation for python/matlab representation or gnuplot
 typedef struct
 {
 	uint32_t m_img_num;
@@ -56,19 +56,21 @@ typedef struct
 
 typedef struct
 {
-	uint8_t R;
-	uint8_t G;
-	uint8_t B;
+	uint8_t R = 255;
+	uint8_t G = 0;
+	uint8_t B = 0;
 }Color;
 
 typedef struct
 {
 	int g_high;
 	int g_low;
+	int g_incr;
 	int line_width;
 	std::vector<std::string> img_names;
 	std::vector<std::string> test_lines;
 	std::string csvFile;
+	std::vector<std::string> columns;
 
 }TestSettings;
 
@@ -157,6 +159,10 @@ bool readConfig(bool debugMode, TestSettings &settings)
 							{
 								settings.g_high = std::stoi(gPtr->value());
 							}
+							if (gName.compare(GINCR_NODE) == 0)
+							{
+								settings.g_incr= std::stoi(gPtr->value());
+							}
 						}
 					}
 					if (nodeName.compare(CSV_NODE) == 0)
@@ -166,6 +172,18 @@ bool readConfig(bool debugMode, TestSettings &settings)
 					if (nodeName.compare(LINEWIDTH_NODE) == 0)
 					{
 						settings.line_width = std::stoi(pNode->value());
+					}
+					if (nodeName.compare(RESULT_COLUMNS) == 0)
+					{
+						for (xml_node<> *columnPtr = pNode->first_node(); columnPtr; columnPtr = columnPtr->next_sibling())
+						{
+							std::string columnName = columnPtr->name();
+							if (columnName.compare(COLUMNS_NODE) == 0)
+							{
+								settings.columns.push_back(columnPtr->value());
+							}
+
+						}
 					}
 				}
 			}
@@ -253,11 +271,20 @@ void displayTrackedLine(CImg<unsigned char> &img, const std::vector<unsigned int
 {
 	for (int i = 0; i < img.width(); i++)
 	{
-		for (int j = -line_width; i <= line_width; j++)
+		for (int j = -line_width; j <= line_width; j++)
 		{
-			img(i, (int)line_x[i] + j, 0, 0) = color.R;
-			img(i, (int)line_x[i] + j, 0, 1) = color.G;
-			img(i, (int)line_x[i] + j, 0, 2) = color.B;
+			int idx = (int)line_x[i] + j;
+			if (idx < 0)
+			{
+				continue;
+			}
+			else if (idx > img.height() - 1)
+			{
+				break;
+			}
+			img(i, idx, 0, 0) = color.R;
+			img(i, idx, 0, 1) = color.G;
+			img(i, idx, 0, 2) = color.B;
 		}
 	}
 }
@@ -295,12 +322,23 @@ uint32_t checkDetectionError(const std::vector<unsigned int> &line, const std::v
 	return error;
 }
 
-//maybe later add returning error codes
-void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, int g_incr, PlotInfo &plotInfo, const std::vector<std::vector<uint32_t> > &test_lines)
+bool test_viterbi(const TestSettings &settings, PlotInfo &plotInfo)
 {
-	if (g_h <= g_l || g_h < 0 || g_l > 0)
+	if (settings.g_high <= settings.g_low || settings.g_high < 0 || settings.g_low > 0)
 	{
-		return;
+		return false;
+	}
+	std::vector<std::vector<uint32_t> > test_lines;
+	std::vector<uint32_t> test_line;
+	bool success = true;
+	for (auto && name : settings.test_lines)
+	{
+		success = readTestLine(name, test_line);
+		test_lines.push_back(test_line);
+	}
+	if (!success)
+	{
+		return false;
 	}
 	cl_device_id device_id = NULL;
 	cl_command_queue command_queue = NULL;
@@ -309,11 +347,11 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 	if (CL_SUCCESS != initializeCL(command_queue, context, device_id))
 	{
 		printf("\nFailed OpenCl initialization!\n");
-		return;
+		return false;
 	}
 	Viterbi viterbi(command_queue, context, device_id);
 	uint32_t img_num = 0;
-	for (auto && img_file : img_files)
+	for (auto && img_file : settings.img_names)
 	{
 		CImg<unsigned char> img(img_file.c_str());
 		CImg<unsigned char> gray_img(img.width(), img.height(), 1, 1, 0);
@@ -329,8 +367,8 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 
 		viterbi.setImg(gray_img, img.height(), img.width());
 		uint8_t n = 0;
-		int g_low = g_l;
-		int g_high = g_h;
+		int g_low = settings.g_low;
+		int g_high = settings.g_high;
 		while (g_high + abs(g_low) > 0 && g_low <= 0 && g_high >= 0) // maybe redundant but whatever...
 		{
 			std::vector<std::vector<unsigned int> > line_results;
@@ -357,18 +395,6 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 			line_results.push_back(line_x);
 			times.push_back(time_ms);
 			cout << "\nSerial time :" << time_ms << endl;
-			/*
-			gpu rows version
-			start = clock();
-			//viterbi parallel rows gpu version
-			viterbi.viterbiLineOpenCL_rows(&line_x[0], g_low, g_high);
-			end = clock();
-			time_ms = (double)(end - start);
-
-			line_results.push_back(line_x);
-			times.push_back(time_ms);
-			*/
-
 			//cpu multithread version
 			start = clock();
 			viterbi.launchViterbiMultiThread(line_x, g_low, g_high);
@@ -392,9 +418,9 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 			//save plot data in plot info data vector
 			plotInfo.m_pData.push_back(data);
 			//next g_l/h combo
-			displayTrackedLine(img, line_x, n);
-			g_low += g_incr;
-			g_high -= g_incr;
+			displayTrackedLine(img, line_x, settings.line_width, Color());
+			g_low += settings.g_incr;
+			g_high -= settings.g_incr;
 			++n;
 		}
 		++img_num;
@@ -402,18 +428,19 @@ void test_viterbi(const std::vector<std::string> &img_files, int g_h, int g_l, i
 	}
 	//cleanup
 	int err = 0;
-	err = clFlush(command_queue);
-	err = clFinish(command_queue);
-	err = clReleaseCommandQueue(command_queue);
-	err = clReleaseContext(context);
+	err |= clFlush(command_queue);
+	err |= clFinish(command_queue);
+	err |= clReleaseCommandQueue(command_queue);
+	err |= clReleaseContext(context);
+	return err == CL_SUCCESS;
 }
 
-void generateCsv(const std::string &file, const PlotInfo &pInfo, const std::vector<std::string> &columnNames)
+void generateCsv(const PlotInfo &pInfo, const TestSettings &settings)
 {
 	std::ofstream data_file;
-	data_file.open(file);
+	data_file.open(settings.csvFile);
 	uint32_t i = 0;
-	for (auto && column : columnNames)
+	for (auto && column : settings.columns)
 	{
 		if (i > 0)
 		{
@@ -437,7 +464,7 @@ void generateCsv(const std::string &file, const PlotInfo &pInfo, const std::vect
 	}
 }
 
-void basicTest()
+int basicTest(const TestSettings &settings)
 {
 	cl_device_id device_id = NULL;
 	cl_command_queue command_queue = NULL;
@@ -446,9 +473,9 @@ void basicTest()
 	if (CL_SUCCESS != initializeCL(command_queue, context, device_id))
 	{
 		printf("\nFailed OpenCl initialization!\n");
-		return;
+		return false;
 	}
-	CImg<unsigned char> img(IMG_FILE);
+	CImg<unsigned char> img(settings.img_names[0].c_str());
 	CImg<unsigned char> gray_img(img.width(), img.height(), 1, 1, 0);
 	//convert to monochrome image
 	rgb2Gray(img, gray_img);
@@ -460,45 +487,27 @@ void basicTest()
 	Viterbi viterbi(command_queue, context, device_id);
 	viterbi.setImg(gray_img, img.height(), img.width());
 	clock_t start = clock();
-	//viterbi.viterbiLineOpenCL_cols(&line_x[0], -8, 8);
+	viterbi.viterbiLineOpenCL_cols(&line_x[0], settings.g_low, settings.g_high);
 	clock_t end = clock();
 	double time_ms = (double)(end - start);
-	for (int i = 0; i < img.width(); i++)
-	{
-		img(i, (int)line_x[i], 0, 0) = 255;
-		img(i, (int)line_x[i], 0, 1) = 0;
-		img(i, (int)line_x[i], 0, 2) = 0;
-	}
+	displayTrackedLine(img, line_x, settings.line_width, Color());
 	CImgDisplay gray_disp(gray_img, "image gray");
 	CImgDisplay rgb_disp(img, "image rgb1");
 	printf("\nviterbi parallel time, cols version: %f ms\n", time_ms);
 
 	start = clock();
-	//viterbi.viterbiLineDetect(line_x, -8, 8);
+	viterbi.viterbiLineDetect(line_x, settings.g_low, settings.g_high);
 	end = clock();
 	time_ms = (double)(end - start);
-	for (int i = 0; i < img.width(); i++)
-	{
-		img(i, (int)line_x[i], 0, 0) = 255;
-		img(i, (int)line_x[i], 0, 1) = 0;
-		img(i, (int)line_x[i], 0, 2) = 0;
-	}
+	displayTrackedLine(img, line_x, settings.line_width, Color());
 	printf("\nViterbi serial time: %f ms\n", time_ms);
 	CImgDisplay rgb1_disp(img, "Image rgb2");
 
 	start = clock();
-	viterbi.launchViterbiMultiThread(line_x, -2, 2);
+	viterbi.launchViterbiMultiThread(line_x, settings.g_low, settings.g_high);
 	end = clock();
 	time_ms = (double)(end - start);
-	for (int i = 0; i < img.width(); i++)
-	{
-		for (int j = -2; j < 3; j++)
-		{
-			img(i, (int)line_x[i] + j, 0, 0) = 255;
-			img(i, (int)line_x[i] + j, 0, 1) = 0;
-			img(i, (int)line_x[i] + j, 0, 2) = 0;
-		}
-	}
+	displayTrackedLine(img, line_x, settings.line_width, Color());
 	printf("\nViterbi parallel time , threads CPU version: %f ms\n", time_ms);
 	CImgDisplay rgb2_disp(img, "Image rgb3");
 	img.save_bmp("threds1.bmp");
@@ -506,7 +515,9 @@ void basicTest()
 	//cleanup
 	int err = 0;
 	err = clFlush(command_queue);
-	err = clFinish(command_queue);
-	err = clReleaseCommandQueue(command_queue);
-	err = clReleaseContext(context);
+	err |= clFinish(command_queue);
+	err |= clReleaseCommandQueue(command_queue);
+	err |= clReleaseContext(context);
+
+	return err;
 }
