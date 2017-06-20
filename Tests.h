@@ -13,6 +13,12 @@
 #include <sstream>
 #include "rapidxml\rapidxml.hpp"
 
+#ifdef _DEBUG
+#define print(x) cout << x << endl;
+#else
+#define print(x)
+#endif // _DEBUG
+
 using namespace cimg_library;
 using namespace std;
 using namespace rapidxml;
@@ -54,12 +60,13 @@ typedef struct
 	uint32_t m_plot_id;
 }PlotInfo;
 
-typedef struct
+struct Color
 {
 	uint8_t R = 255;
 	uint8_t G = 0;
 	uint8_t B = 0;
-}Color;
+	Color() :R(255), G(0), B(0){}
+};
 
 typedef struct
 {
@@ -89,8 +96,6 @@ bool readConfig(bool debugMode, TestSettings &settings)
 
 		//xml parsing
 		xml_node<> *pRoot = doc.first_node();
-		cout << pRoot->name() << endl;
-		cout << pRoot->next_sibling()->name() << endl;
 		for (xml_node<> *mainNode = doc.first_node(); mainNode; mainNode = mainNode->next_sibling())
 		{
 			if (debugMode && (std::string(mainNode->name()).compare(DEBUG_SETTINGS_NODE) == 0))
@@ -354,6 +359,7 @@ bool test_viterbi(const TestSettings &settings, PlotInfo &plotInfo)
 	for (auto && img_file : settings.img_names)
 	{
 		CImg<unsigned char> img(img_file.c_str());
+		CImg<unsigned char> img_test(img_file.c_str());
 		CImg<unsigned char> gray_img(img.width(), img.height(), 1, 1, 0);
 		//convert to monochrome image
 		rgb2Gray(img, gray_img);
@@ -369,11 +375,14 @@ bool test_viterbi(const TestSettings &settings, PlotInfo &plotInfo)
 		uint8_t n = 0;
 		int g_low = settings.g_low;
 		int g_high = settings.g_high;
+		std::vector<unsigned int> line_x(img.width(), 0);
+		//prepare hybrid for optimal work - test it with biggest neighbour range - prefer gpu
+		viterbi.launchHybridViterbi(line_x, g_low, g_high);
 		while (g_high + abs(g_low) > 0 && g_low <= 0 && g_high >= 0) // maybe redundant but whatever...
 		{
 			std::vector<std::vector<unsigned int> > line_results;
 			std::vector<double> times;
-			std::vector<unsigned int> line_x(img.width(), 0);
+			line_x = std::vector<unsigned int>(img.width(), 0);
 			std::vector<uint32_t> detectionError;
 
 			//viterbi parallel cols gpu version 
@@ -384,7 +393,7 @@ bool test_viterbi(const TestSettings &settings, PlotInfo &plotInfo)
 			detectionError.push_back(checkDetectionError(line_x, test_lines[img_num]));
 			line_results.push_back(line_x);
 			times.push_back(time_ms);
-			cout << "\nGPU time :" << time_ms << endl;
+			print("\nGPU time :" + std::to_string(time_ms));
 			//viterbi serial cpu version
 			start = clock();
 			viterbi.viterbiLineDetect(line_x, g_low, g_high);
@@ -394,7 +403,7 @@ bool test_viterbi(const TestSettings &settings, PlotInfo &plotInfo)
 			detectionError.push_back(checkDetectionError(line_x, test_lines[img_num]));
 			line_results.push_back(line_x);
 			times.push_back(time_ms);
-			cout << "\nSerial time :" << time_ms << endl;
+			print("\nSerial time :" + std::to_string(time_ms));
 			//cpu multithread version
 			start = clock();
 			viterbi.launchViterbiMultiThread(line_x, g_low, g_high);
@@ -403,7 +412,15 @@ bool test_viterbi(const TestSettings &settings, PlotInfo &plotInfo)
 			detectionError.push_back(checkDetectionError(line_x, test_lines[img_num]));
 			line_results.push_back(line_x);
 			times.push_back(time_ms);
-			cout << "\nThreads time :" << time_ms << endl;
+			print("\nThreads time :" + std::to_string(time_ms));
+			//hybrid
+			start = clock();
+			viterbi.launchHybridViterbi(line_x, g_low, g_high);
+			end = clock();
+			time_ms = (double)(end - start);
+			line_results.push_back(line_x);
+			times.push_back(time_ms);
+			print("\nHybrid time :" + std::to_string(time_ms));
 			//save data for ploting and tabel representation
 			data.m_g_high = g_high;
 			data.m_g_low = g_low;
@@ -412,19 +429,22 @@ bool test_viterbi(const TestSettings &settings, PlotInfo &plotInfo)
 			uint32_t avg_err = std::accumulate(detectionError.begin(), detectionError.end(), 0) / detectionError.size();
 			for (auto && error : detectionError)
 			{
-				cout << "\nError : " << error;
+				print("\nError : " + std::to_string(error));
 			}
 			data.m_detectionError = avg_err;
 			//save plot data in plot info data vector
 			plotInfo.m_pData.push_back(data);
 			//next g_l/h combo
-			displayTrackedLine(img, line_x, settings.line_width, Color());
+			displayTrackedLine(img_test, line_x, settings.line_width, Color());
+			//save img reasult
+			std::string g_img_name = data.m_img_name + "_ghigh_"+ std::to_string(g_high) + "_glow_" + std::to_string(g_low) + "_result.bmp";
+			img_test.save_bmp(g_img_name.c_str());
 			g_low += settings.g_incr;
 			g_high -= settings.g_incr;
-			++n;
+			++n;	
+			img_test = img;
 		}
 		++img_num;
-		img.save_bmp((data.m_img_name + "result.bmp").c_str());
 	}
 	//cleanup
 	int err = 0;

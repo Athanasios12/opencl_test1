@@ -10,8 +10,8 @@
 <ReleaseSettings>
 	<TestFiles>
 		<img>
-			<name>line_error_test_0.bmp</name>
-			<test_line>line_pos_0.txt</test_line>
+			<name>line_error_test_1.bmp</name>
+			<test_line>line_pos_1.txt</test_line>
 		</img>
 		<img>
 			<name>line_error_test_1.bmp</name>
@@ -38,6 +38,7 @@
 		<column>GPU</column>
 		<column>SERIAL</column>
 		<column>CPU_THREADS</column>
+		<column>HYBRID</column>
 	</result_columns>
 </ReleaseSettings>
 

@@ -388,10 +388,6 @@ double Viterbi::viterbiHybridCPU(std::vector<unsigned int> &line_x, int g_low, i
 	while (to_process > 0)
 	{
 		uint8_t launched_threads = 0;
-		if (to_process < 10 && m_set_hybrid_rate)
-		{
-			cout << endl;
-		}
 		for (uint8_t i = 0; i < num_of_threads; i++)
 		{
 			if (start_col < end_col)
@@ -485,7 +481,7 @@ double Viterbi::viterbiHybridGPU(unsigned int *line_x, int g_low, int g_high, ui
 			global_size * sizeof(int), line_x, 0, NULL, NULL);
 		first_col_linex += global_size;
 	}
-	line_x[m_img_width - 1] = line_x[m_img_width - 2];
+	line_x[m_img_width - 1 - start_col] = line_x[m_img_width - 2 - start_col];
 
 	//realase resources
 	err = clReleaseMemObject(cmLine_x);
@@ -505,7 +501,6 @@ bool Viterbi::launchHybridViterbi(std::vector<unsigned int>& line_x, int g_low, 
 		m_set_hybrid_rate = false;
 		m_hybrid_rate = std::make_pair(0.5, 0.5);
 	}
-
 	uint32_t start_col_CPU = 0, end_col_CPU = static_cast<uint32_t>(m_hybrid_rate.first * static_cast<double>(m_img_width));
 	uint32_t start_col_GPU = end_col_CPU + 1, end_col_GPU = m_img_width - 1;
 	uint8_t num_of_threads = std::thread::hardware_concurrency();
