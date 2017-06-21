@@ -42,6 +42,15 @@ const char CSV_NODE[] = "CSV";
 const char RESULT_COLUMNS[] = "result_columns";
 const char COLUMNS_NODE[] = "column";
 
+enum Algorithm
+{
+	ALL = 0,
+	SERIAL = 1,
+	THREADS = 2,
+	GPU = 8,
+	HYBRID = 16,
+};
+
 typedef struct
 {
 	uint32_t m_img_num;
@@ -81,7 +90,7 @@ typedef struct
 
 }TestSettings;
 
-bool readConfig(bool debugMode, TestSettings &settings)
+bool readConfig(bool debugMode, TestSettings &settings, Algorithm algType)
 {
 	xml_document<> doc;
 	std::ifstream file(CONFIG_FILE);
@@ -185,7 +194,26 @@ bool readConfig(bool debugMode, TestSettings &settings)
 							std::string columnName = columnPtr->name();
 							if (columnName.compare(COLUMNS_NODE) == 0)
 							{
-								settings.columns.push_back(columnPtr->value());
+								bool hasId = false;
+								if (algType != ALL)
+								{
+									for (xml_attribute<> *id = columnPtr->first_attribute(); id; id = id->next_attribute())
+									{
+										std::string id_name= id->name();
+										int id_val = std::stoi(id->value());
+										if (id_name.compare("id") == 0)
+										{
+											if ((static_cast<int>(algType) & id_val) != 0 || id_val == 0)
+											{
+												settings.columns.push_back(columnPtr->value());
+											}
+										}
+									}
+								}
+								else
+								{
+									settings.columns.push_back(columnPtr->value());
+								}
 							}
 
 						}
@@ -327,7 +355,7 @@ uint32_t checkDetectionError(const std::vector<unsigned int> &line, const std::v
 	return error;
 }
 
-bool test_viterbi(const TestSettings &settings, PlotInfo &plotInfo)
+bool test_viterbi(const TestSettings &settings, PlotInfo &plotInfo, Algorithm algType)
 {
 	if (settings.g_high <= settings.g_low || settings.g_high < 0 || settings.g_low > 0)
 	{
@@ -384,43 +412,56 @@ bool test_viterbi(const TestSettings &settings, PlotInfo &plotInfo)
 			std::vector<double> times;
 			line_x = std::vector<unsigned int>(img.width(), 0);
 			std::vector<uint32_t> detectionError;
-
+			clock_t start, end;
+			double time_ms;
 			//viterbi parallel cols gpu version 
-			clock_t start = clock();
-			viterbi.viterbiLineOpenCL_cols(&line_x[0], g_low, g_high);
-			clock_t end = clock();
-			double time_ms = (double)(end - start);
-			detectionError.push_back(checkDetectionError(line_x, test_lines[img_num]));
-			line_results.push_back(line_x);
-			times.push_back(time_ms);
-			print("\nGPU time :" + std::to_string(time_ms));
+			if (algType & GPU || algType == ALL)
+			{
+				start = clock();
+				viterbi.viterbiLineOpenCL_cols(&line_x[0], g_low, g_high);
+				end = clock();
+				time_ms = (double)(end - start);
+				detectionError.push_back(checkDetectionError(line_x, test_lines[img_num]));
+				line_results.push_back(line_x);
+				times.push_back(time_ms);
+				print("\nGPU time :" + std::to_string(time_ms));
+			}
 			//viterbi serial cpu version
-			start = clock();
-			viterbi.viterbiLineDetect(line_x, g_low, g_high);
-			end = clock();
-			time_ms = (double)(end - start);
-			//check line detection error based on desired cordinates from line_test.py script, save it in another column
-			detectionError.push_back(checkDetectionError(line_x, test_lines[img_num]));
-			line_results.push_back(line_x);
-			times.push_back(time_ms);
-			print("\nSerial time :" + std::to_string(time_ms));
+			if (algType & SERIAL || algType == ALL)
+			{
+				start = clock();
+				viterbi.viterbiLineDetect(line_x, g_low, g_high);
+				end = clock();
+				time_ms = (double)(end - start);
+				//check line detection error based on desired cordinates from line_test.py script, save it in another column
+				detectionError.push_back(checkDetectionError(line_x, test_lines[img_num]));
+				line_results.push_back(line_x);
+				times.push_back(time_ms);
+				print("\nSerial time :" + std::to_string(time_ms));
+			}
 			//cpu multithread version
-			start = clock();
-			viterbi.launchViterbiMultiThread(line_x, g_low, g_high);
-			end = clock();
-			time_ms = (double)(end - start);
-			detectionError.push_back(checkDetectionError(line_x, test_lines[img_num]));
-			line_results.push_back(line_x);
-			times.push_back(time_ms);
-			print("\nThreads time :" + std::to_string(time_ms));
+			if (algType & THREADS || algType == ALL)
+			{
+				start = clock();
+				viterbi.launchViterbiMultiThread(line_x, g_low, g_high);
+				end = clock();
+				time_ms = (double)(end - start);
+				detectionError.push_back(checkDetectionError(line_x, test_lines[img_num]));
+				line_results.push_back(line_x);
+				times.push_back(time_ms);
+				print("\nThreads time :" + std::to_string(time_ms));
+			}
 			//hybrid
-			start = clock();
-			viterbi.launchHybridViterbi(line_x, g_low, g_high);
-			end = clock();
-			time_ms = (double)(end - start);
-			line_results.push_back(line_x);
-			times.push_back(time_ms);
-			print("\nHybrid time :" + std::to_string(time_ms));
+			if (algType & HYBRID || algType == ALL)
+			{
+				start = clock();
+				viterbi.launchHybridViterbi(line_x, g_low, g_high);
+				end = clock();
+				time_ms = (double)(end - start);
+				line_results.push_back(line_x);
+				times.push_back(time_ms);
+				print("\nHybrid time :" + std::to_string(time_ms));
+			}
 			//save data for ploting and tabel representation
 			data.m_g_high = g_high;
 			data.m_g_low = g_low;
@@ -459,28 +500,32 @@ void generateCsv(const PlotInfo &pInfo, const TestSettings &settings)
 {
 	std::ofstream data_file;
 	data_file.open(settings.csvFile);
-	uint32_t i = 0;
-	for (auto && column : settings.columns)
+	if (data_file.is_open())
 	{
-		if (i > 0)
+		uint32_t i = 0;
+		for (auto && column : settings.columns)
 		{
-			data_file << "," << column;
-		}
-		else
-		{
-			data_file << column;
-		}
-		++i;
-	}
-	data_file << "\n";
-	for (auto && data : pInfo.m_pData)
-	{
-		data_file << data.m_img_num << "," << data.m_img_size << "," << data.m_g_low << "," << data.m_g_high << "," << data.m_detectionError;
-		for (auto && time : data.m_exec_time)
-		{
-			data_file << "," << time;
+			if (i > 0)
+			{
+				data_file << "," << column;
+			}
+			else
+			{
+				data_file << column;
+			}
+			++i;
 		}
 		data_file << "\n";
+		for (auto && data : pInfo.m_pData)
+		{
+			data_file << data.m_img_num << "," << data.m_img_size << "," << data.m_g_low << "," << data.m_g_high << "," << data.m_detectionError;
+			for (auto && time : data.m_exec_time)
+			{
+				data_file << "," << time;
+			}
+			data_file << "\n";
+		}
+		data_file.close();
 	}
 }
 

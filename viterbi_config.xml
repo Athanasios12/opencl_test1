@@ -10,8 +10,8 @@
 <ReleaseSettings>
 	<TestFiles>
 		<img>
-			<name>line_error_test_1.bmp</name>
-			<test_line>line_pos_1.txt</test_line>
+			<name>line_error_test_0.bmp</name>
+			<test_line>line_pos_0.txt</test_line>
 		</img>
 		<img>
 			<name>line_error_test_1.bmp</name>
@@ -30,15 +30,15 @@
 	<CSV>test_results.csv</CSV>
 	<LINE_WIDTH>2</LINE_WIDTH>
 	<result_columns>
-		<column>img_num</column>
-		<column>img_size</column>
-		<column>g_low</column>
-		<column>g_high</column>
-		<column>error</column>
-		<column>GPU</column>
-		<column>SERIAL</column>
-		<column>CPU_THREADS</column>
-		<column>HYBRID</column>
+		<column id="0">img_num</column>
+		<column id="0">img_size</column>
+		<column id="0">g_low</column>
+		<column id="0">g_high</column>
+		<column id="0">error</column>
+		<column id="8">GPU</column>
+		<column id="1">SERIAL</column>
+		<column id="2">CPU_THREADS</column>
+		<column id="16">HYBRID</column>
 	</result_columns>
 </ReleaseSettings>
 
