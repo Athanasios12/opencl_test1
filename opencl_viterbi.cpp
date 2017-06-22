@@ -34,9 +34,10 @@ int main(int argc, char **argv)
 			cout << "Wrong response type try again." << endl;
 		}
 	}
-	else
+	else if(argc == 2)
 	{
-		algType = (Algorithm)(*(argv[1]) - '0');
+		algType = static_cast<Algorithm>(std::stoi(std::string(argv[1])));
+		cout << "Alg type is :" << algType << endl;
 	}
 	PlotInfo pInfo;
 	readConfig(false, settings, algType);
