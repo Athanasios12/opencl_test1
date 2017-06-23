@@ -39,6 +39,7 @@ private:
 	bool loadAndBuildKernel();
 	double viterbiHybridCPU(std::vector<unsigned int> &line_x, int g_low, int g_high, uint32_t start_col, uint32_t end_col);
 	double viterbiHybridGPU(unsigned int *line_x, int g_low, int g_high, uint32_t start_col, uint32_t end_col);
+	double viterbiHybridGPU_CPU(unsigned int *line_x, std::vector<unsigned int> &line, int g_low, int g_high, uint32_t start_col, uint32_t end_col);
 
 	//private memebers
 	const unsigned char *m_img;

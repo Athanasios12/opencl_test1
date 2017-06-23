@@ -7,8 +7,11 @@ int main(int argc, char **argv)
 	TestSettings settings;
 	Algorithm algType;
 #ifdef _DEBUG
-	readConfig(true, settings);
-	basicTest(settings);
+	algType = HYBRID;
+	PlotInfo pInfo;
+	readConfig(false, settings, algType);
+	test_viterbi(settings, pInfo, algType);
+	//basicTest(settings);
 #else
 	if (argc < 2)
 	{
@@ -37,7 +40,6 @@ int main(int argc, char **argv)
 	else if(argc == 2)
 	{
 		algType = static_cast<Algorithm>(std::stoi(std::string(argv[1])));
-		cout << "Alg type is :" << algType << endl;
 	}
 	PlotInfo pInfo;
 	readConfig(false, settings, algType);

@@ -10,16 +10,8 @@
 <ReleaseSettings>
 	<TestFiles>
 		<img>
-			<name>line_error_test_0.bmp</name>
-			<test_line>line_pos_0.txt</test_line>
-		</img>
-		<img>
 			<name>line_error_test_1.bmp</name>
 			<test_line>line_pos_1.txt</test_line>
-		</img>
-		<img>
-			<name>line_error_test_2.bmp</name>
-			<test_line>line_pos_2.txt</test_line>
 		</img>
 	</TestFiles>
 	<GRange>

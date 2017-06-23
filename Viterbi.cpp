@@ -382,7 +382,7 @@ double Viterbi::viterbiHybridCPU(std::vector<unsigned int> &line_x, int g_low, i
 	clock_t start = clock();
 	uint32_t to_process = end_col - start_col;
 	uint32_t idx = start_col;
-	uint8_t num_of_threads = std::thread::hardware_concurrency() - 2;
+	uint8_t num_of_threads = std::thread::hardware_concurrency() - 1;
 	std::vector<unsigned int> line(num_of_threads);
 	std::vector<std::future<unsigned int> > viterbiThreads(num_of_threads);
 	while (to_process > 0)
@@ -512,9 +512,26 @@ bool Viterbi::launchHybridViterbi(std::vector<unsigned int>& line_x, int g_low, 
 	std::future<double> gpu_thread = std::async(launch::async, &Viterbi::viterbiHybridGPU,
 		this, &line_x[start_col_GPU], g_low, g_high, start_col_GPU, end_col_GPU);
 
-	double time_cpu = cpu_thread.get();
 	double time_gpu = gpu_thread.get();
-
+	double time_cpu = cpu_thread.get();
+	//proof that cpu doesnt scale the same as the gpu - do 2 less tasks, still takes almost the same time to complete
+	// prepare posix, openmp alternative for this bullshit - maybe will work better, check on different
+	//cpu. In different case, does not make sense for larger images, gpu too fast, and cpu doesnt keep up
+#ifdef _DEBUG
+	cout << "Thread combo 1 : CPU time = " << time_cpu << "\t GPU time = " << time_gpu << endl;
+	cout << "CPU GPU thread combo 1 time : " << time_gpu + time_cpu << endl;
+#endif // _DEBUG
+	//double time_cpu_gpu = viterbiHybridGPU_CPU(&line_x[start_col_GPU], line_x, g_low, g_high, start_col_GPU, end_col_GPU);
+	//cout << "CPU_GPU thread combo 2 time : " << time_cpu_gpu << endl;
+	////test the separate
+	//time_gpu = viterbiHybridGPU(&line_x[start_col_GPU], g_low, g_high, start_col_GPU, end_col_GPU);
+	//time_cpu = viterbiHybridCPU(line_x, g_low, g_high, start_col_CPU, end_col_CPU);
+	//cout << "CPU time = " << time_cpu << "\t GPU time = " << time_gpu << endl;
+	//cout << "CPU + GPU separate time : " << time_gpu + time_cpu << endl;
+	//cout << "\n\nSeparate whole processed - threads and gpu" << endl;
+	//time_gpu = viterbiHybridGPU(&line_x[0], g_low, g_high, start_col_CPU, end_col_GPU);
+	//time_cpu = viterbiHybridCPU(line_x, g_low, g_high, start_col_CPU, end_col_GPU);
+	//cout << "CPU time = " << time_cpu << "\t GPU time = " << time_gpu << endl;
 	bool success = false;
 	if (time_cpu > 0 && time_gpu > 0)
 	{
