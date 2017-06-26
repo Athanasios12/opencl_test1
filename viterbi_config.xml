@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <DebugSettings>
 	<TestFiles>
-		<img_in>noise_1.bmp</img_in>
+		<img_in>noise_3.bmp</img_in>
 	</TestFiles>
 	<G_LOW>-2</G_LOW>
 	<G_HIGH>2</G_HIGH>

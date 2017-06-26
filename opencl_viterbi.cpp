@@ -5,13 +5,13 @@
 int main(int argc, char **argv)
 {
 	TestSettings settings;
-	Algorithm algType;
+	Algorithm algType = HYBRID;
 #ifdef _DEBUG
-	algType = HYBRID;
-	PlotInfo pInfo;
-	readConfig(false, settings, algType);
-	test_viterbi(settings, pInfo, algType);
-	//basicTest(settings);
+	//algType = HYBRID;
+	//PlotInfo pInfo;
+	readConfig(true, settings, algType);
+	//test_viterbi(settings, pInfo, algType);
+	basicTest(settings);
 #else
 	if (argc < 2)
 	{

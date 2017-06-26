@@ -1,6 +1,7 @@
 #include "Viterbi.h"
 #include <iostream>
 #include <mutex>
+#include <omp.h>
 
 using namespace std;
 
@@ -425,7 +426,6 @@ double Viterbi::viterbiHybridGPU(unsigned int *line_x, int g_low, int g_high, ui
 	size_t width = end_col - start_col;
 	size_t img_size = (m_img_height * m_img_width);
 	size_t L_size = m_img_height * width;
-	const unsigned char *gpu_img_fragment = 0;
 	size_t global_size = width;
 
 	//check available memory
@@ -480,6 +480,7 @@ double Viterbi::viterbiHybridGPU(unsigned int *line_x, int g_low, int g_high, ui
 		err |= clEnqueueReadBuffer(m_command_queue, cmLine_x, CL_TRUE, 0,
 			global_size * sizeof(int), line_x, 0, NULL, NULL);
 		first_col_linex += global_size;
+		//err |= clEnqueueWriteBuffer(m_command_queue, cmLine_x, CL_FALSE, 0, sizeof(int) * global_size, line_x + first_col_linex, 0, NULL, NULL);
 	}
 	line_x[m_img_width - 1 - start_col] = line_x[m_img_width - 2 - start_col];
 
@@ -545,4 +546,191 @@ bool Viterbi::launchHybridViterbi(std::vector<unsigned int>& line_x, int g_low, 
 		success = true;
 	}
 	return success;
+}
+
+bool Viterbi::viterbiOpenMP(std::vector<unsigned int> &line_x, int g_low, int g_high)
+{
+	if (m_img == 0 && m_img_height > 0 && m_img_width > 0)
+	{
+		return false;
+	}
+	#pragma omp parallel
+	{
+		std::vector<uint32_t> L(m_img_height * m_img_width, 0);
+		std::vector<uint32_t> V(m_img_height * m_img_width, 0);
+		unsigned char pixel_value = 0;
+		uint32_t P_max = 0;
+		uint32_t x_max = 0;
+		std::vector<uint32_t> x_cord(m_img_width, 0);
+		uint32_t max_val = 0;
+		#pragma omp for
+		for (int i = 0; i < (m_img_width - 1); i++)
+		{
+			for (size_t m = 0; m < m_img_height; m++)
+			{
+				V[(m * m_img_width) + i] = 0;
+			}
+			for (size_t n = i; n < (m_img_width - 1); n++)
+			{
+				for (int j = 0; j < m_img_height; j++)
+				{
+					max_val = 0;
+					for (int g = g_low; g <= g_high; g++)
+					{
+						if ((j + g) >(int)(m_img_height - 1))
+						{
+							break;
+						}
+						if (j + g < 0)
+						{
+							continue;
+						}
+						int curr_id = j + g;
+						pixel_value = m_img[((curr_id)* m_img_width) + n];
+						if ((pixel_value + V[(m_img_width * curr_id) + n]) > max_val)
+						{
+							max_val = pixel_value + V[(m_img_width * curr_id) + n];
+							L[(j * m_img_width) + n] = g;
+						}
+					}
+					V[(j * m_img_width) + (n + 1)] = max_val;
+				}
+			}
+			//find biggest cost value in last column
+			for (size_t j = 0; j < m_img_height; j++)
+			{
+				if (V[(j * m_img_width) + (m_img_width - 1)] > P_max)
+				{
+					P_max = V[(j * m_img_width) + (m_img_width - 1)];
+					x_max = j;
+				}
+			}
+			//backwards phase - retrace the path
+			x_cord[(m_img_width - 1)] = x_max;
+			for (size_t n = (m_img_width - 1); n > i; n--)
+			{
+				x_cord[n - 1] = x_cord[n] + L[(x_cord[n] * m_img_width) + (n - 1)];
+			}
+			// save only last pixel position
+			line_x[i] = x_cord[i];
+			P_max = 0;
+			x_max = 0;
+		}
+	}
+	line_x[m_img_width - 1] = line_x[m_img_width - 2];
+	return true;
+}
+
+int Viterbi::launchHybridViterbiOpenMP(std::vector<unsigned int> &line_x, int g_low, int g_high)
+{
+	if (m_set_hybrid_rate && m_size_changed)
+	{
+		m_set_hybrid_rate = false;
+		m_hybrid_rate = std::make_pair(0.5, 0.5);
+	}
+	uint32_t start_col_CPU = 0;
+	uint32_t end_col_CPU = static_cast<uint32_t>(m_hybrid_rate.first * static_cast<double>(m_img_width));
+	uint32_t start_col_GPU = end_col_CPU + 1;
+	uint32_t end_col_GPU = m_img_width - 1;
+
+	double time_gpu = 0;
+	double time_cpu = 0;
+	//std::future<double> cpu_thread = std::async(launch::async, &Viterbi::viterbiHybridOpenMP_CPU,
+		//this, std::ref(line_x), g_low, g_high, start_col_CPU, end_col_CPU);
+	std::future<double> gpu_thread = std::async(launch::async, &Viterbi::viterbiHybridGPU,
+		this, &line_x[start_col_GPU], g_low, g_high, start_col_GPU, end_col_GPU);
+
+	//time_cpu = cpu_thread.get();
+	time_gpu = gpu_thread.get();
+	cout << "Time gpu : " << time_gpu << endl;
+	//cout << "Time cpu : " << time_cpu << endl;
+
+	/*#pragma omp parallel num_threads(2)
+	{
+		auto thread_id = omp_get_thread_num();
+		if (thread_id == 0)
+		{
+			time_cpu = viterbiHybridOpenMP_CPU(line_x, g_low, g_high, start_col_CPU, end_col_CPU);
+		}
+		else
+		{
+			time_gpu = viterbiHybridGPU(&line_x[start_col_GPU], g_low, g_high, start_col_GPU, end_col_GPU);
+		}
+	}*/
+	//double tot_time = time_gpu + time_cpu;
+	return time_gpu;
+}
+
+double Viterbi::viterbiHybridOpenMP_CPU(std::vector<unsigned int> &line_x, int g_low, int g_high, uint32_t start_col, uint32_t end_col)
+{
+	clock_t start = clock();
+	if (m_img == 0 && m_img_height > 0 && m_img_width > 0)
+	{
+		return false;
+	}
+	#pragma omp parallel
+	{
+		std::vector<uint32_t> L(m_img_height * m_img_width, 0);
+		std::vector<uint32_t> V(m_img_height * m_img_width, 0);
+		unsigned char pixel_value = 0;
+		uint32_t P_max = 0;
+		uint32_t x_max = 0;
+		std::vector<uint32_t> x_cord(m_img_width, 0);
+		uint32_t max_val = 0;
+		#pragma omp for
+		for (int i = start_col; i <= end_col; i++)
+		{
+			for (size_t m = 0; m < m_img_height; m++)
+			{
+				V[(m * m_img_width) + i] = 0;
+			}
+			for (size_t n = i; n < (m_img_width - 1); n++)
+			{
+				for (int j = 0; j < m_img_height; j++)
+				{
+					max_val = 0;
+					for (int g = g_low; g <= g_high; g++)
+					{
+						if ((j + g) >(int)(m_img_height - 1))
+						{
+							break;
+						}
+						if (j + g < 0)
+						{
+							continue;
+						}
+						int curr_id = j + g;
+						pixel_value = m_img[((curr_id)* m_img_width) + n];
+						if ((pixel_value + V[(m_img_width * curr_id) + n]) > max_val)
+						{
+							max_val = pixel_value + V[(m_img_width * curr_id) + n];
+							L[(j * m_img_width) + n] = g;
+						}
+					}
+					V[(j * m_img_width) + (n + 1)] = max_val;
+				}
+			}
+			//find biggest cost value in last column
+			for (size_t j = 0; j < m_img_height; j++)
+			{
+				if (V[(j * m_img_width) + (m_img_width - 1)] > P_max)
+				{
+					P_max = V[(j * m_img_width) + (m_img_width - 1)];
+					x_max = j;
+				}
+			}
+			//backwards phase - retrace the path
+			x_cord[(m_img_width - 1)] = x_max;
+			for (size_t n = (m_img_width - 1); n > i; n--)
+			{
+				x_cord[n - 1] = x_cord[n] + L[(x_cord[n] * m_img_width) + (n - 1)];
+			}
+			// save only last pixel position
+			line_x[i] = x_cord[i];
+			P_max = 0;
+			x_max = 0;
+		}
+	}
+	clock_t end = clock();
+	return static_cast<double>(end - start);
 }

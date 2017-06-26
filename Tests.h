@@ -552,16 +552,16 @@ int basicTest(const TestSettings &settings)
 	Viterbi viterbi(command_queue, context, device_id);
 	viterbi.setImg(gray_img, img.height(), img.width());
 	clock_t start = clock();
-	viterbi.viterbiLineOpenCL_cols(&line_x[0], settings.g_low, settings.g_high);
+	//viterbi.viterbiLineOpenCL_cols(&line_x[0], settings.g_low, settings.g_high);
 	clock_t end = clock();
 	double time_ms = (double)(end - start);
-	displayTrackedLine(img, line_x, settings.line_width, Color());
-	CImgDisplay gray_disp(gray_img, "image gray");
-	CImgDisplay rgb_disp(img, "image rgb1");
+	//displayTrackedLine(img, line_x, settings.line_width, Color());
+	//CImgDisplay gray_disp(gray_img, "image gray");
+	//CImgDisplay rgb_disp(img, "image rgb1");
 	printf("\nviterbi parallel time, cols version: %f ms\n", time_ms);
-
+	line_x = std::vector<unsigned int>(img.width(), 0);
 	start = clock();
-	viterbi.viterbiLineDetect(line_x, settings.g_low, settings.g_high);
+	viterbi.launchHybridViterbi(line_x, settings.g_low, settings.g_high);
 	end = clock();
 	time_ms = (double)(end - start);
 	displayTrackedLine(img, line_x, settings.line_width, Color());
@@ -569,14 +569,14 @@ int basicTest(const TestSettings &settings)
 	CImgDisplay rgb1_disp(img, "Image rgb2");
 
 	start = clock();
-	viterbi.launchViterbiMultiThread(line_x, settings.g_low, settings.g_high);
+	//viterbi.launchViterbiMultiThread(line_x, settings.g_low, settings.g_high);
 	end = clock();
 	time_ms = (double)(end - start);
-	displayTrackedLine(img, line_x, settings.line_width, Color());
-	printf("\nViterbi parallel time , threads CPU version: %f ms\n", time_ms);
-	CImgDisplay rgb2_disp(img, "Image rgb3");
+	//displayTrackedLine(img, line_x, settings.line_width, Color());
+	//printf("\nViterbi parallel time , threads CPU version: %f ms\n", time_ms);
+	//CImgDisplay rgb2_disp(img, "Image rgb3");
 	img.save_bmp("threds1.bmp");
-	while (!rgb2_disp.is_closed());
+	while (!rgb1_disp.is_closed());
 	//cleanup
 	int err = 0;
 	err = clFlush(command_queue);

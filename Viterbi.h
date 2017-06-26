@@ -31,6 +31,8 @@ public:
 	int viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high);
 	int launchViterbiMultiThread(std::vector<unsigned int>& line_x, int g_low, int g_high);
 	bool launchHybridViterbi(std::vector<unsigned int>& line_x, int g_low, int g_high);
+	bool viterbiOpenMP(std::vector<unsigned int> &line_x, int g_low, int g_high);
+	int launchHybridViterbiOpenMP(std::vector<unsigned int> &line_x, int g_low, int g_high);
 private:
 	//private methods
 	size_t readKernelFile(std::string &source_str, const std::string &fileName);
@@ -39,7 +41,7 @@ private:
 	bool loadAndBuildKernel();
 	double viterbiHybridCPU(std::vector<unsigned int> &line_x, int g_low, int g_high, uint32_t start_col, uint32_t end_col);
 	double viterbiHybridGPU(unsigned int *line_x, int g_low, int g_high, uint32_t start_col, uint32_t end_col);
-	double viterbiHybridGPU_CPU(unsigned int *line_x, std::vector<unsigned int> &line, int g_low, int g_high, uint32_t start_col, uint32_t end_col);
+	double viterbiHybridOpenMP_CPU(std::vector<unsigned int> &line_x, int g_low, int g_high, uint32_t start_col, uint32_t end_col);
 
 	//private memebers
 	const unsigned char *m_img;
