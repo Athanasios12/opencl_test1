@@ -1,6 +1,7 @@
 #include "Viterbi.h"
 #include <iostream>
 #include <mutex>
+#include "Common_Tools.h"
 #include <omp.h>
 
 using namespace std;
@@ -241,7 +242,7 @@ int Viterbi::viterbiLineOpenCL_cols(unsigned int *line_x, int g_low, int g_high)
 		// Copy results from the memory buffer 
 		err |= clEnqueueReadBuffer(m_command_queue, cmLine_x, CL_TRUE, 0,
 			m_img_width * sizeof(int), line_x, 0, NULL, NULL);
-		first_col += global_size;
+		first_col += global_size - 1;
 	}
 
 	line_x[m_img_width - 1] = line_x[m_img_width - 2];
@@ -448,7 +449,7 @@ double Viterbi::viterbiHybridGPU(unsigned int *line_x, int g_low, int g_high, ui
 	cl_mem cmImg = clCreateBuffer(m_context, CL_MEM_READ_ONLY, sizeof(unsigned char) * img_size, NULL, &err);
 	err = clEnqueueWriteBuffer(m_command_queue, cmImg, CL_FALSE, 0, sizeof(unsigned char) * img_size, m_img, 0, NULL, NULL);
 
-	cl_mem cmLine_x = clCreateBuffer(m_context, CL_MEM_READ_WRITE, global_size * sizeof(int), NULL, &err);
+	cl_mem cmLine_x = clCreateBuffer(m_context, CL_MEM_READ_WRITE, width * sizeof(int), NULL, &err);
 	cl_mem cmV1 = clCreateBuffer(m_context, CL_MEM_READ_WRITE, m_img_height * global_size * sizeof(float), NULL, &err);
 	cl_mem cmV2 = clCreateBuffer(m_context, CL_MEM_READ_WRITE, m_img_height * global_size * sizeof(float), NULL, &err);
 	cl_mem cmL = clCreateBuffer(m_context, CL_MEM_READ_WRITE, L_size * global_size * sizeof(float), NULL, &err);
@@ -470,19 +471,18 @@ double Viterbi::viterbiHybridGPU(unsigned int *line_x, int g_low, int g_high, ui
 		return -1;
 	}
 	size_t first_col_linex = 0;
-	err = clEnqueueWriteBuffer(m_command_queue, cmLine_x, CL_FALSE, 0, sizeof(int) * global_size, line_x, 0, NULL, NULL);
-	while ((first_col_linex + start_col) < end_col && !err)
+	err = clEnqueueWriteBuffer(m_command_queue, cmLine_x, CL_FALSE, 0, sizeof(int) * width, line_x, 0, NULL, NULL);
+	while ((first_col_linex + start_col) <= end_col && !err)
 	{
 		err = clSetKernelArg(m_viterbiHybridKernel, 10, sizeof(cl_int), (void*)&first_col_linex);
 		err |= clEnqueueNDRangeKernel(m_command_queue, m_viterbiHybridKernel, 1, NULL, &global_size, NULL, 0, NULL, NULL);
 
 		// Copy results from the memory buffer
 		err |= clEnqueueReadBuffer(m_command_queue, cmLine_x, CL_TRUE, 0,
-			global_size * sizeof(int), line_x, 0, NULL, NULL);
-		first_col_linex += global_size;
-		//err |= clEnqueueWriteBuffer(m_command_queue, cmLine_x, CL_FALSE, 0, sizeof(int) * global_size, line_x + first_col_linex, 0, NULL, NULL);
+			width * sizeof(int), line_x, 0, NULL, NULL);
+		first_col_linex += global_size - 1;
 	}
-	line_x[m_img_width - 1 - start_col] = line_x[m_img_width - 2 - start_col];
+	line_x[width] = line_x[width - 1];
 
 	//realase resources
 	err = clReleaseMemObject(cmLine_x);
@@ -503,13 +503,14 @@ bool Viterbi::launchHybridViterbi(std::vector<unsigned int>& line_x, int g_low, 
 		m_hybrid_rate = std::make_pair(0.5, 0.5);
 	}
 	uint32_t start_col_CPU = 0, end_col_CPU = static_cast<uint32_t>(m_hybrid_rate.first * static_cast<double>(m_img_width));
-	uint32_t start_col_GPU = end_col_CPU + 1, end_col_GPU = m_img_width - 1;
+	uint32_t start_col_GPU = end_col_CPU, end_col_GPU = m_img_width - 1;
 	uint8_t num_of_threads = std::thread::hardware_concurrency();
 	std::vector<unsigned int> line(num_of_threads);
 	std::vector<std::future<unsigned int> > viterbiThreads(num_of_threads);
 
 	std::future<double> cpu_thread = std::async(launch::async, &Viterbi::viterbiHybridCPU,
 		this, std::ref(line_x), g_low, g_high, start_col_CPU, end_col_CPU);
+	std::unique_ptr<unsigned int> line_gpu(new unsigned int[end_col_GPU - start_col_GPU]);
 	std::future<double> gpu_thread = std::async(launch::async, &Viterbi::viterbiHybridGPU,
 		this, &line_x[start_col_GPU], g_low, g_high, start_col_GPU, end_col_GPU);
 
@@ -518,21 +519,8 @@ bool Viterbi::launchHybridViterbi(std::vector<unsigned int>& line_x, int g_low, 
 	//proof that cpu doesnt scale the same as the gpu - do 2 less tasks, still takes almost the same time to complete
 	// prepare posix, openmp alternative for this bullshit - maybe will work better, check on different
 	//cpu. In different case, does not make sense for larger images, gpu too fast, and cpu doesnt keep up
-#ifdef _DEBUG
-	cout << "Thread combo 1 : CPU time = " << time_cpu << "\t GPU time = " << time_gpu << endl;
-	cout << "CPU GPU thread combo 1 time : " << time_gpu + time_cpu << endl;
-#endif // _DEBUG
-	//double time_cpu_gpu = viterbiHybridGPU_CPU(&line_x[start_col_GPU], line_x, g_low, g_high, start_col_GPU, end_col_GPU);
-	//cout << "CPU_GPU thread combo 2 time : " << time_cpu_gpu << endl;
-	////test the separate
-	//time_gpu = viterbiHybridGPU(&line_x[start_col_GPU], g_low, g_high, start_col_GPU, end_col_GPU);
-	//time_cpu = viterbiHybridCPU(line_x, g_low, g_high, start_col_CPU, end_col_CPU);
-	//cout << "CPU time = " << time_cpu << "\t GPU time = " << time_gpu << endl;
-	//cout << "CPU + GPU separate time : " << time_gpu + time_cpu << endl;
-	//cout << "\n\nSeparate whole processed - threads and gpu" << endl;
-	//time_gpu = viterbiHybridGPU(&line_x[0], g_low, g_high, start_col_CPU, end_col_GPU);
-	//time_cpu = viterbiHybridCPU(line_x, g_low, g_high, start_col_CPU, end_col_GPU);
-	//cout << "CPU time = " << time_cpu << "\t GPU time = " << time_gpu << endl;
+	print("Thread combo 1 : CPU time = " << time_cpu << "\t GPU time = " << time_gpu);
+	print("CPU GPU thread combo 1 time : " << time_gpu + time_cpu);
 	bool success = false;
 	if (time_cpu > 0 && time_gpu > 0)
 	{
@@ -621,7 +609,7 @@ bool Viterbi::viterbiOpenMP(std::vector<unsigned int> &line_x, int g_low, int g_
 	return true;
 }
 
-int Viterbi::launchHybridViterbiOpenMP(std::vector<unsigned int> &line_x, int g_low, int g_high)
+bool Viterbi::launchHybridViterbiOpenMP(std::vector<unsigned int> &line_x, int g_low, int g_high)
 {
 	if (m_set_hybrid_rate && m_size_changed)
 	{
@@ -630,22 +618,13 @@ int Viterbi::launchHybridViterbiOpenMP(std::vector<unsigned int> &line_x, int g_
 	}
 	uint32_t start_col_CPU = 0;
 	uint32_t end_col_CPU = static_cast<uint32_t>(m_hybrid_rate.first * static_cast<double>(m_img_width));
-	uint32_t start_col_GPU = end_col_CPU + 1;
+	uint32_t start_col_GPU = end_col_CPU;
 	uint32_t end_col_GPU = m_img_width - 1;
 
 	double time_gpu = 0;
 	double time_cpu = 0;
-	//std::future<double> cpu_thread = std::async(launch::async, &Viterbi::viterbiHybridOpenMP_CPU,
-		//this, std::ref(line_x), g_low, g_high, start_col_CPU, end_col_CPU);
-	std::future<double> gpu_thread = std::async(launch::async, &Viterbi::viterbiHybridGPU,
-		this, &line_x[start_col_GPU], g_low, g_high, start_col_GPU, end_col_GPU);
 
-	//time_cpu = cpu_thread.get();
-	time_gpu = gpu_thread.get();
-	cout << "Time gpu : " << time_gpu << endl;
-	//cout << "Time cpu : " << time_cpu << endl;
-
-	/*#pragma omp parallel num_threads(2)
+	#pragma omp parallel num_threads(2)
 	{
 		auto thread_id = omp_get_thread_num();
 		if (thread_id == 0)
@@ -656,9 +635,21 @@ int Viterbi::launchHybridViterbiOpenMP(std::vector<unsigned int> &line_x, int g_
 		{
 			time_gpu = viterbiHybridGPU(&line_x[start_col_GPU], g_low, g_high, start_col_GPU, end_col_GPU);
 		}
-	}*/
+	}
 	//double tot_time = time_gpu + time_cpu;
-	return time_gpu;
+	bool success = false;
+	if (time_cpu > 0 && time_gpu > 0)
+	{
+		//calculate new rate
+		if (!m_set_hybrid_rate)
+		{
+			double rate = (time_cpu / (time_cpu + time_gpu));
+			m_hybrid_rate = std::make_pair(1 - rate, rate);
+			m_set_hybrid_rate = true;
+		}
+		success = true;
+	}
+	return success;
 }
 
 double Viterbi::viterbiHybridOpenMP_CPU(std::vector<unsigned int> &line_x, int g_low, int g_high, uint32_t start_col, uint32_t end_col)

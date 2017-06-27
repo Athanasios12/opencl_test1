@@ -1,3 +1,6 @@
+#ifndef TESTS_H
+#define TESTS_H
+
 #include <stdio.h>
 #include <CL/cl.h>
 #include "CImg.h"
@@ -12,83 +15,11 @@
 #include <stdlib.h>
 #include <sstream>
 #include "rapidxml\rapidxml.hpp"
-
-#ifdef _DEBUG
-#define print(x) cout << x << endl;
-#else
-#define print(x)
-#endif // _DEBUG
+#include "Common_Tools.h"
 
 using namespace cimg_library;
 using namespace std;
 using namespace rapidxml;
-
-//image settings
-const char CONFIG_FILE[] = "viterbi_config.xml";
-const char DEBUG_SETTINGS_NODE[] = "DebugSettings";
-const char RELEASE_SETTINGS_NODE[] = "ReleaseSettings";
-const char DEBUG_IMG_NODE[] = "img_in";
-const char DEBUG_RESULT_NODE[] = "result";
-const char TESTFILES_NODE[] = "TestFiles";
-const char GLOW_NODE[] = "G_LOW";
-const char GHIGH_NODE[] = "G_HIGH";
-const char GINCR_NODE[] = "G_INCR";
-const char LINEWIDTH_NODE[] = "LINE_WIDTH";
-const char IMG_NODE[] = "img";
-const char IMG_NAME[] = "name";
-const char IMG_TESTLINE[] = "test_line";
-const char GRANGE_NODE[] = "GRange";
-const char CSV_NODE[] = "CSV";
-const char RESULT_COLUMNS[] = "result_columns";
-const char COLUMNS_NODE[] = "column";
-
-enum Algorithm
-{
-	ALL = 0,
-	SERIAL = 1,
-	THREADS = 2,
-	GPU = 8,
-	HYBRID = 16,
-};
-
-typedef struct
-{
-	uint32_t m_img_num;
-	std::string m_img_name;
-	double m_img_size;
-	int m_g_low;
-	int m_g_high;
-	std::vector<double> m_exec_time;
-	std::vector<std::vector<unsigned int> > m_lines_pos;
-	uint32_t m_detectionError;
-}PlotData;
-
-typedef struct
-{
-	std::vector<PlotData> m_pData;
-	uint32_t m_plot_id;
-}PlotInfo;
-
-struct Color
-{
-	uint8_t R = 255;
-	uint8_t G = 0;
-	uint8_t B = 0;
-	Color() :R(255), G(0), B(0){}
-};
-
-typedef struct
-{
-	int g_high;
-	int g_low;
-	int g_incr;
-	int line_width;
-	std::vector<std::string> img_names;
-	std::vector<std::string> test_lines;
-	std::string csvFile;
-	std::vector<std::string> columns;
-
-}TestSettings;
 
 bool readConfig(bool debugMode, TestSettings &settings, Algorithm algType)
 {
@@ -561,22 +492,26 @@ int basicTest(const TestSettings &settings)
 	printf("\nviterbi parallel time, cols version: %f ms\n", time_ms);
 	line_x = std::vector<unsigned int>(img.width(), 0);
 	start = clock();
-	viterbi.launchHybridViterbi(line_x, settings.g_low, settings.g_high);
+	viterbi.viterbiLineOpenCL_cols(&line_x[0], settings.g_low, settings.g_high);
+	//viterbi.launchHybridViterbi(line_x, settings.g_low, settings.g_high);
 	end = clock();
 	time_ms = (double)(end - start);
 	displayTrackedLine(img, line_x, settings.line_width, Color());
 	printf("\nViterbi serial time: %f ms\n", time_ms);
-	CImgDisplay rgb1_disp(img, "Image rgb2");
+	//CImgDisplay rgb1_disp(img, "Image rgb2");
 
 	start = clock();
-	//viterbi.launchViterbiMultiThread(line_x, settings.g_low, settings.g_high);
+	viterbi.launchHybridViterbiOpenMP(line_x, settings.g_low, settings.g_high);
+	end = clock();
+	start = clock();
+	viterbi.launchHybridViterbiOpenMP(line_x, settings.g_low, settings.g_high);
 	end = clock();
 	time_ms = (double)(end - start);
-	//displayTrackedLine(img, line_x, settings.line_width, Color());
-	//printf("\nViterbi parallel time , threads CPU version: %f ms\n", time_ms);
+	displayTrackedLine(img, line_x, settings.line_width, Color());
+	printf("\nViterbi parallel time , threads CPU version: %f ms\n", time_ms);
 	//CImgDisplay rgb2_disp(img, "Image rgb3");
 	img.save_bmp("threds1.bmp");
-	while (!rgb1_disp.is_closed());
+	//while (!rgb1_disp.is_closed());
 	//cleanup
 	int err = 0;
 	err = clFlush(command_queue);
@@ -586,3 +521,4 @@ int basicTest(const TestSettings &settings)
 
 	return err;
 }
+#endif

@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <DebugSettings>
 	<TestFiles>
-		<img_in>noise_3.bmp</img_in>
+		<img_in>noise_1.bmp</img_in>
 	</TestFiles>
-	<G_LOW>-2</G_LOW>
-	<G_HIGH>2</G_HIGH>
+	<G_LOW>-8</G_LOW>
+	<G_HIGH>8</G_HIGH>
 	<LINE_WIDTH>2</LINE_WIDTH>
 </DebugSettings>
 <ReleaseSettings>

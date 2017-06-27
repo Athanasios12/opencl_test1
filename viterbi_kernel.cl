@@ -103,11 +103,12 @@ __kernel void viterbi_gpu_fragment(	__global const unsigned char *img,
 	// init first column with zeros
 	int n = 0;
 	int x_n = 0;
+	int first_col = first_col_linex + first_col_img;
 	for (int m = 0; m < img_height; m++)
 	{
 		V_old[m] = 0;
 	}
-	for (n = start_column; n < (global_size - 1) && ((n + first_col_img + first_col_linex) < (img_width - 1)); n++)
+	for (n = start_column; (n < (global_size - 1)) && (n + first_col) < (img_width - 1); n++)
 	{
 		for (int j = 0; j < img_height; j++)
 		{
@@ -122,7 +123,7 @@ __kernel void viterbi_gpu_fragment(	__global const unsigned char *img,
 				{
 					continue;
 				}
-				pixel_value = img[((j + g) * img_width) + (n + first_col_img + first_col_linex)];
+				pixel_value = img[((j + g) * img_width) + (n + first_col)];
 				if ((pixel_value + V_old[j + g]) > max_val)
 				{
 					max_val = pixel_value + V_old[j + g];

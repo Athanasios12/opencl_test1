@@ -12,9 +12,9 @@
 
 using namespace cimg_library;
 
-const size_t MAX_SOURCE_SIZE = 0x100000;
-const char VITERBI_KERNEL_FILE[] = "viterbi_kernel.cl"; // later pass file name as argument in contructor
-const char VITERBI_COLS_FUNCTION[] = "viterbi_function"; //pass kernel function name in 
+//kernel constants
+const char VITERBI_KERNEL_FILE[] = "viterbi_kernel.cl"; 
+const char VITERBI_COLS_FUNCTION[] = "viterbi_function"; 
 const char VITERBI_GPU_FRAGMENT_FUNCTION[] = "viterbi_gpu_fragment";
 
 class Viterbi
@@ -32,7 +32,7 @@ public:
 	int launchViterbiMultiThread(std::vector<unsigned int>& line_x, int g_low, int g_high);
 	bool launchHybridViterbi(std::vector<unsigned int>& line_x, int g_low, int g_high);
 	bool viterbiOpenMP(std::vector<unsigned int> &line_x, int g_low, int g_high);
-	int launchHybridViterbiOpenMP(std::vector<unsigned int> &line_x, int g_low, int g_high);
+	bool launchHybridViterbiOpenMP(std::vector<unsigned int> &line_x, int g_low, int g_high);
 private:
 	//private methods
 	size_t readKernelFile(std::string &source_str, const std::string &fileName);
