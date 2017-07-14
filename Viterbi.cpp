@@ -636,7 +636,7 @@ bool Viterbi::launchHybridViterbiOpenMP(std::vector<unsigned int> &line_x, int g
 			time_gpu = viterbiHybridGPU(&line_x[start_col_GPU], g_low, g_high, start_col_GPU, end_col_GPU);
 		}
 	}
-	//double tot_time = time_gpu + time_cpu;
+
 	bool success = false;
 	if (time_cpu > 0 && time_gpu > 0)
 	{
