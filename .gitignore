@@ -248,6 +248,10 @@ FakesAssemblies/
 #csv
 *.csv
 
+#libraries
+CImg.h
+rapidxml/
+
 # Visual Studio 6 workspace options file
 *.opt
 
