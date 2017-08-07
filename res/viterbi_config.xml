@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DebugSettings>
+	<TestFiles>
+		<img_in>noise_1.bmp</img_in>
+	</TestFiles>
+	<G_LOW>-8</G_LOW>
+	<G_HIGH>8</G_HIGH>
+	<LINE_WIDTH>2</LINE_WIDTH>
+</DebugSettings>
+<ReleaseSettings>
+	<TestFiles>
+		<img>
+			<name>line_error_test_1.bmp</name>
+			<test_line>line_pos_1.txt</test_line>
+		</img>
+	</TestFiles>
+	<GRange>
+		<G_LOW>-8</G_LOW>
+		<G_HIGH>8</G_HIGH>
+		<G_INCR>1</G_INCR>
+	</GRange>
+	<CSV>test_results.csv</CSV>
+	<LINE_WIDTH>2</LINE_WIDTH>
+	<result_columns>
+		<column id="0">img_num</column>
+		<column id="0">img_size</column>
+		<column id="0">g_low</column>
+		<column id="0">g_high</column>
+		<column id="0">error</column>
+		<column id="8">GPU</column>
+		<column id="1">SERIAL</column>
+		<column id="2">CPU_THREADS</column>
+		<column id="16">HYBRID</column>
+	</result_columns>
+</ReleaseSettings>
+
+

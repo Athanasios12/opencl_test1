@@ -1,5 +1,0 @@
-__kernel void addVectors(const __global float * pVector1, __global float * pVector2, __global float * pVectorSum)
-{
-	int glob_id = get_global_id(0);
-	pVecectorSum[glob_id] = pVecector1[glob_id] + pVecector2[glob_id];
-}
