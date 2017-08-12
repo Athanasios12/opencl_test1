@@ -1,17 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <DebugSettings>
 	<TestFiles>
-		<img_in>line_2.bmp</img_in>
+		<img_in>noise_1.bmp</img_in>
 	</TestFiles>
-	<G_LOW>-2</G_LOW>
-	<G_HIGH>2</G_HIGH>
+	<G_LOW>-8</G_LOW>
+	<G_HIGH>8</G_HIGH>
 	<LINE_WIDTH>2</LINE_WIDTH>
 </DebugSettings>
 <ReleaseSettings>
 	<TestFiles>
 		<img>
+			<name>line_error_test_0.bmp</name>
+			<test_line>line_pos_0.txt</test_line>
 			<name>line_error_test_1.bmp</name>
 			<test_line>line_pos_1.txt</test_line>
+			<name>line_error_test_2.bmp</name>
+			<test_line>line_pos_2.txt</test_line>
 		</img>
 	</TestFiles>
 	<GRange>
@@ -27,10 +31,12 @@
 		<column id="0">g_low</column>
 		<column id="0">g_high</column>
 		<column id="0">error</column>
-		<column id="8">GPU</column>
 		<column id="1">SERIAL</column>
-		<column id="2">CPU_THREADS</column>
-		<column id="16">HYBRID</column>
+		<column id="2">CPP11_THREADS</column>
+		<column id="4">OPENMP_THREADS</column>
+		<column id="8">GPU</column>
+		<column id="16">CPP11_HYBRID</column>
+		<column id="32">OPENMP_HYBRID</column>
 	</result_columns>
 </ReleaseSettings>
 

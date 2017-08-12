@@ -5,13 +5,14 @@
 int main(int argc, char **argv)
 {
 	TestSettings settings;
-	Algorithm algType = HYBRID;
+	Algorithm algType = static_cast<Algorithm>(OPENMP_HYBRID | GPU | SERIAL);
 #ifdef _DEBUG
-	//algType = HYBRID;
-	//PlotInfo pInfo;
-	readConfig(true, settings, algType);
-	//test_viterbi(settings, pInfo, algType);
-	basicTest(settings);
+	algType = CPP11_HYBRID;
+	PlotInfo pInfo;
+	readConfig(false, settings, algType);
+	test_viterbi(settings, pInfo);
+	generateCsv(pInfo, settings);
+	//basicTest(settings);
 #else
 	if (argc < 2)
 	{
@@ -41,9 +42,10 @@ int main(int argc, char **argv)
 	{
 		algType = static_cast<Algorithm>(std::stoi(std::string(argv[1])));
 	}
+	print("Algtype" << algType);
 	PlotInfo pInfo;
 	readConfig(false, settings, algType);
-	test_viterbi(settings, pInfo, algType);
+	test_viterbi(settings, pInfo);
 	generateCsv(pInfo, settings);
 #endif
 	return 0;

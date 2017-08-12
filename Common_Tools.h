@@ -5,7 +5,7 @@
 #define print(x) cout << x << endl;
 #else
 #define print(x)
-#endif // _DEBUG
+#endif // _debug
 
 //image settings
 const char CONFIG_FILE[] = "viterbi_config.xml";
@@ -30,9 +30,11 @@ enum Algorithm
 {
 	ALL = 0,
 	SERIAL = 1,
-	THREADS = 2,
+	CPP11_THREADS = 2,
+	OPENMP_THREADS = 4,
 	GPU = 8,
-	HYBRID = 16,
+	CPP11_HYBRID = 16,
+	OPENMP_HYBRID = 32
 };
 
 typedef struct
@@ -71,6 +73,6 @@ typedef struct
 	std::vector<std::string> test_lines;
 	std::string csvFile;
 	std::vector<std::string> columns;
-
+	std::vector<Algorithm> algorithms;
 }TestSettings;
 #endif

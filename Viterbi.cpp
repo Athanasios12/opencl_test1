@@ -13,6 +13,7 @@ Viterbi::Viterbi(const cl_command_queue & command_queue, const cl_context & cont
 	m_device_id(device_id),
 	m_set_hybrid_rate(false),
 	m_hybrid_rate(std::pair<double, double>(0.5, 0.5)),
+	m_hybridopenmp_rate(std::pair<double, double>(0.5, 0.5)),
 	m_size_changed(false)
 {
 	m_initalized = loadAndBuildKernel();
@@ -436,9 +437,9 @@ double Viterbi::viterbiHybridGPU(unsigned int *line_x, int g_low, int g_high, ui
 	err = clGetDeviceInfo(m_device_id, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(cl_ulong), &max_alloc, NULL);
 	int dev_mem = static_cast<int>(double(dev_memory) / double(1024 * 1024));//MB
 	int max_buff_size = static_cast<int>(double(max_alloc) / double(1024 * 1024));
-	int tot_mem = static_cast<int>(double((img_size * global_size * sizeof(float)) +
+	int tot_mem = static_cast<int>(double((L_size * global_size * sizeof(float)) +
 		(2 * m_img_height * global_size * sizeof(float)) +
-		(m_img_width * sizeof(int)) + (img_size * sizeof(unsigned char))) / double(1024 * 1024));
+		(width * sizeof(int)) + (img_size * sizeof(unsigned char))) / double(1024 * 1024));
 	//handle not enough GPU memory
 	if (max_buff_size < tot_mem)
 	{
@@ -496,12 +497,6 @@ double Viterbi::viterbiHybridGPU(unsigned int *line_x, int g_low, int g_high, ui
 
 bool Viterbi::launchHybridViterbi(std::vector<unsigned int>& line_x, int g_low, int g_high)
 {
-	if (m_set_hybrid_rate && m_size_changed)
-	{
-		//set default rate, img size changed too much
-		m_set_hybrid_rate = false;
-		m_hybrid_rate = std::make_pair(0.5, 0.5);
-	}
 	uint32_t start_col_CPU = 0, end_col_CPU = static_cast<uint32_t>(m_hybrid_rate.first * static_cast<double>(m_img_width));
 	uint32_t start_col_GPU = end_col_CPU, end_col_GPU = m_img_width - 1;
 	uint8_t num_of_threads = std::thread::hardware_concurrency();
@@ -516,21 +511,15 @@ bool Viterbi::launchHybridViterbi(std::vector<unsigned int>& line_x, int g_low, 
 
 	double time_gpu = gpu_thread.get();
 	double time_cpu = cpu_thread.get();
-	//proof that cpu doesnt scale the same as the gpu - do 2 less tasks, still takes almost the same time to complete
-	// prepare posix, openmp alternative for this bullshit - maybe will work better, check on different
-	//cpu. In different case, does not make sense for larger images, gpu too fast, and cpu doesnt keep up
+
 	print("\n\nThread combo 1 : CPU time = " << time_cpu << "\t GPU time = " << time_gpu << "\n");
 	print("\nCPU GPU thread combo 1 time : " << time_gpu + time_cpu << "\n");
 	bool success = false;
 	if (time_cpu > 0 && time_gpu > 0)
 	{
 		//calculate new rate
-		if (!m_set_hybrid_rate)
-		{
-			double rate = time_cpu / (time_cpu + time_gpu);
-			m_hybrid_rate = std::make_pair(1 - rate, rate);
-			m_set_hybrid_rate = true;
-		}
+		double rate = time_cpu / (time_cpu + time_gpu);
+		m_hybrid_rate = std::make_pair(1 - rate, rate);
 		success = true;
 	}
 	return success;
@@ -611,13 +600,8 @@ bool Viterbi::viterbiOpenMP(std::vector<unsigned int> &line_x, int g_low, int g_
 
 bool Viterbi::launchHybridViterbiOpenMP(std::vector<unsigned int> &line_x, int g_low, int g_high)
 {
-	if (m_set_hybrid_rate && m_size_changed)
-	{
-		m_set_hybrid_rate = false;
-		m_hybrid_rate = std::make_pair(0.5, 0.5);
-	}
 	uint32_t start_col_CPU = 0;
-	uint32_t end_col_CPU = static_cast<uint32_t>(m_hybrid_rate.first * static_cast<double>(m_img_width));
+	uint32_t end_col_CPU = static_cast<uint32_t>(m_hybridopenmp_rate.first * static_cast<double>(m_img_width));
 	uint32_t start_col_GPU = end_col_CPU;
 	uint32_t end_col_GPU = m_img_width - 1;
 
@@ -641,12 +625,8 @@ bool Viterbi::launchHybridViterbiOpenMP(std::vector<unsigned int> &line_x, int g
 	if (time_cpu > 0 && time_gpu > 0)
 	{
 		//calculate new rate
-		if (!m_set_hybrid_rate)
-		{
-			double rate = (time_cpu / (time_cpu + time_gpu));
-			m_hybrid_rate = std::make_pair(1 - rate, rate);
-			m_set_hybrid_rate = true;
-		}
+		double rate = (time_cpu / (time_cpu + time_gpu));
+		m_hybridopenmp_rate = std::make_pair(1 - rate, rate);
 		success = true;
 	}
 	return success;

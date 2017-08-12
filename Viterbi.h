@@ -57,6 +57,7 @@ private:
 	cl_kernel m_viterbiHybridKernel;
 	bool m_set_hybrid_rate;
 	std::pair<double, double> m_hybrid_rate;
+	std::pair<double, double> m_hybridopenmp_rate;
 };
 
 #endif //VITERBI_H
