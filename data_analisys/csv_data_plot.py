@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import csv
+import os
 
 class PlotData:
     def __init__(self, img_num = 0, img_size = 0.0, g = [], times = [] ,alg_types = [], errors = []):
@@ -13,7 +14,7 @@ class PlotData:
         self.alg_types = alg_types
         self.errors = errors
 
-def plot(data_plots):
+def plot(data_plots, file_name):
     #check if there is anything to plot before further operation
     plot_id = 0
     start = 1
@@ -23,9 +24,15 @@ def plot(data_plots):
     best_plots = []
     avg_plots = []
     fig_list  = set()
-    color = ['r', 'g', 'b']
+    color = ['r', 'g', 'b', 'k']
     for data in data_plots:
         g_x = range(0, len(data.g))
+        step = 2
+        g_xn = []
+        idx = 0
+        while idx < step * len(data.g):
+            g_xn += [idx]
+            idx += step
          #make it generated according to number of algorithms for passed data object list
         best_plot = []
         avg_plot = []
@@ -49,42 +56,14 @@ def plot(data_plots):
 
             fig_list.add(plt.figure(plot_id + 100))
             plt.figure(plot_id + 100)
-            x_i = [n + (0.3 * i) for n in g_x]
-            plt.bar(x_i, t_y, color = color[i], label = data.alg_types[i], width = 0.3)
+            x_i = [n + (0.4 * i) for n in g_xn]
+            plt.bar(x_i, t_y, color = color[i], label = data.alg_types[i], width = 0.4)
             plt.xlabel('Neighbor range')
             plt.ylabel('Time[ms]')
             plt.title('Execution time for image size ' + str(int(float(data.img_size)* 1024.0)) + ' KB')
-            plt.xticks(g_x, data.g)
-            plt.grid()
-            # try:
-            #     fig_list.add(plt.figure(200 + i))
-            #     plt.figure(200 + i)
-            #     s_start = start - ((len(data.g) / 2) * step)
-            #     end = start + ((len(data.g) / 2) * step)
-            #     y_t = ([0] * int((int(s_start * 10)) / int (10 * step)) + t_y + ([0] * (int(((img_x[len(img_x) - 1] - end) * 10) / int(step * 10)) + 1)))
-            #     plt.bar(img_x, y_t, color = color[i], width = 0.08)
-            #     plt.xlabel('Image size[KB]')
-            #     plt.ylabel('Time[ms]')
-            #     plt.title('Execution time for ' + data.alg_types[i] + ' algorithm')
-            #     plt.xticks(range(1, (len(data_plots) + 1)), [str(float(d.img_size) * 1024.0) for d in data_plots])
-            #     if plot_id == 0:
-            #         plt.grid()
-            # except ValueError:
-            #     print y_t
-            #     print s_start, " ", end
-
-            fig_list.add(plt.figure(300 + plot_id))
-            plt.figure(300 + plot_id)
-            x_i = [n + (0.3 * i) for n in g_x]
-            plt.bar(x_i, data.errors, color=color[i], label=data.alg_types[i], width=0.3)
-            plt.xlabel('Neighbor range')
-            plt.ylabel('Error[px]')
-            plt.title('Accumulated Detection error for image size ' + str(int(float(data.img_size)* 1024.0)) + ' KB')
-            plt.xticks(g_x, data.g)
-            plt.grid()
+            plt.xticks(g_xn, data.g)
             plt.legend()
-        plt.figure(plot_id + 100)
-        plt.legend()
+            plt.grid()
         plt.figure(plot_id, figsize = (10, 10))
         plt.subplots_adjust(hspace = 0.52)
         best_plots += [best_plot]
@@ -94,9 +73,9 @@ def plot(data_plots):
     # avg and best time plots
     sizes = [(int(float(data.img_size)* 1024.0)) for data in data_plots]
     step = 1
-    bar_width = 80
-    start = min(sizes) - len(data_plots[0].g) * bar_width
-    end = max(sizes) + len(data_plots[0].g) * bar_width
+    bar_width = 60
+    start = min(sizes) - int(len(data_plots[0].g) * bar_width / 2)
+    end = max(sizes) + (len(data_plots[0].g) * bar_width / 2)
     size_x = np.linspace(start, end, num = ((end - start) / step)).tolist()
     init_arr = [0] * len(size_x)
     fig_list.add(plt.figure(1000))
@@ -107,7 +86,7 @@ def plot(data_plots):
         dist = 0
         for n in xrange(0, len(sizes)):
             try:
-                idx = int(((sizes[n] - start) / step) - (i * step * bar_width))
+                idx = int(((sizes[n] - start) / step) - (i * step * bar_width)) + 100#100 - magic number - moves in x all bars, make it so the middle bar is in sizes[n]
                 y[idx] = avg[n]
             except:
                 print 'error'
@@ -127,13 +106,14 @@ def plot(data_plots):
         best = [x[i] for x in best_plots]
         best_g = ''
         for n in xrange(0, len(sizes)):
-            idx = int(((sizes[n] - start) / step) - (i * step * bar_width))
+            idx = int(((sizes[n] - start) / step) - (i * step * bar_width)) + 100
             y[idx] = best[n][0]
             best_g = data.g[best[n][1]]
         plt.bar(size_x, y, color=color[len(data_plots[0].alg_types) - i - 1], label=data_plots[0].alg_types[len(data_plots[0].alg_types) - i - 1] + ' for g ' + best_g, width=bar_width)
     plt.xlabel('Image size[KB]')
     plt.ylabel('Time[ms]')
     plt.title('Best Case Execution Time')
+    plt.xticks(sizes, [str(int(float(d.img_size) * 1024.0)) for d in data_plots])
     plt.grid()
     plt.legend()
 
@@ -141,14 +121,18 @@ def plot(data_plots):
     #plt.show()
     #save all plots
     i = 0
-    dir = raw_input("State plot results directory name:")
+    dot = file_name.index('.')
+
+    dir = file_name[:dot] + "_plots/"
+    if not os.path.exists(dir):
+        os.makedirs(dir)
     for fig in fig_list:
-        fig.savefig(dir + "/plot" + str(i), dpi = fig.dpi)
+        fig.savefig( dir + "plot" + str(i), dpi = fig.dpi)
         i += 1
 
 
 #main script
-file_name = raw_input("State results file name : ")
+file_name = 'test_results.csv'#raw_input("State results file name : ")
 plot_data = open(file_name, 'r')
 c_reader = csv.reader(plot_data, delimiter=',', quotechar='|')
 plots = []
@@ -183,4 +167,4 @@ for row in c_reader:
     i += 1
 plots += [pData]
 print plots
-plot(plots)
+plot(plots, file_name)
